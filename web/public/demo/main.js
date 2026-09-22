@@ -36,6 +36,12 @@ const SUGGESTIONS = [
   "Fine - read it back first, then submit.",
 ];
 
+/** Survives a reload, so a tab can hand back the lease it left behind. */
+const LEASE_KEY = "aalto.lease";
+
+/** Bigger than any session can be; the server clamps it to what it granted. */
+const CLAIM_ALL = 999_999;
+
 let session = null;
 let speaker = null;
 let mic = null;
@@ -82,13 +88,20 @@ async function start() {
   inspector.clear();
   resetGuard();
 
+  // Hand back a lease this tab took earlier and never released - a reload, or a
+  // close the beacon did not survive. Without this the visitor is locked out by
+  // their own previous attempt, which is exactly when they are most likely to
+  // be pressing the button again.
+  reclaimStaleLease();
+
   let token;
   try {
     const res = await fetch("/api/demo/token", { method: "POST" });
-    const body = await res.json();
-    if (!res.ok) return void refuse(body.reason);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return void refuse(res.status, body.reason);
     token = body.token;
     lease = body.leaseId;
+    sessionStorage.setItem(LEASE_KEY, lease);
     startedAt = Date.now();
     startCountdown(body.maxSessionSeconds);
   } catch {
@@ -128,19 +141,38 @@ async function start() {
   }
 }
 
-function refuse(reason) {
+/**
+ * Say what actually went wrong.
+ *
+ * Every refusal used to fall through to "too many attempts", including a plain
+ * server error - so a missing API key and a rate limit were indistinguishable
+ * from the page, and the one message shown was the wrong one in both cases.
+ * Keyed off the status as well as the reason, and anything unrecognised reports
+ * itself rather than guessing.
+ */
+function refuse(status, reason) {
   micBtn.disabled = false;
-  if (reason === "active_session") {
-    setStatus("There's already a session open from this connection. Close the other tab.", true);
-  } else if (reason === "daily_limit") {
+
+  if (reason === "daily_limit") {
     micBtn.disabled = true;
-    setStatus(
+    return setStatus(
       "Today's shared demo budget is spent. It resets at midnight UTC - or install the extension and use your own AssemblyAI key.",
       true
     );
-  } else {
-    setStatus("Too many attempts at once. Give it a minute.", true);
   }
+  if (reason === "active_session") {
+    return setStatus(
+      "Two sessions are already open from this network. Try again in a minute.",
+      true
+    );
+  }
+  if (reason === "burst") {
+    return setStatus("That was a lot of attempts at once. Give it a minute.", true);
+  }
+  if (reason === "upstream") {
+    return setStatus("AssemblyAI wouldn't issue a session just now. Try again shortly.", true);
+  }
+  setStatus(`The server couldn't start a session (error ${status}).`, true);
 }
 
 /** Wrap the executor so every call shows up in the inspector as it happens. */
@@ -208,7 +240,23 @@ function releaseLease() {
     durationSeconds: Math.round((Date.now() - startedAt) / 1000),
   });
   navigator.sendBeacon("/api/demo/release", body);
+  sessionStorage.removeItem(LEASE_KEY);
   lease = null;
+}
+
+/** A lease from a previous load of this tab, charged for but never handed back. */
+function reclaimStaleLease() {
+  const stale = sessionStorage.getItem(LEASE_KEY);
+  if (!stale) return;
+  sessionStorage.removeItem(LEASE_KEY);
+  // The point of this is to free the slot, not to win the seconds back. We
+  // cannot know how much of that session was used, and crediting back time that
+  // may well have been spent is the wrong way to be wrong - so claim all of it.
+  // The server clamps to whatever was actually granted.
+  navigator.sendBeacon(
+    "/api/demo/release",
+    JSON.stringify({ leaseId: stale, durationSeconds: CLAIM_ALL })
+  );
 }
 
 function startCountdown(maxSeconds) {

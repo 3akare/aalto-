@@ -28,7 +28,20 @@ export interface BudgetStatus {
 }
 
 /** Grace on top of the session cap before a lease is assumed spent and swept. */
-const LEASE_SLACK_MS = 30_000;
+const LEASE_SLACK_MS = 10_000;
+
+/**
+ * How many sessions one visitor may hold at once.
+ *
+ * Not one. A visitor is an address, and judges sit behind shared ones - an
+ * office, a conference network - where a strict lock means the second person to
+ * try is told someone else is already using it. A stale lease from a tab that
+ * closed without reporting in does the same thing to the same person.
+ *
+ * Two is enough to stop one tab-spamming visitor while leaving the daily cap as
+ * the thing that actually bounds spend, which is what it is for.
+ */
+const MAX_CONCURRENT_PER_VISITOR = 2;
 
 export class DemoBudget extends DurableObject {
   sql: SqlStorage;
@@ -62,7 +75,7 @@ export class DemoBudget extends DurableObject {
     const active = this.sql
       .exec<{ n: number }>("SELECT COUNT(*) AS n FROM leases WHERE visitor = ?", visitor)
       .one().n;
-    if (active > 0) return { ok: false, reason: "active_session" };
+    if (active >= MAX_CONCURRENT_PER_VISITOR) return { ok: false, reason: "active_session" };
 
     const granted = this.grantedToday(day);
     if (granted + seconds > dailyCap) return { ok: false, reason: "daily_limit" };

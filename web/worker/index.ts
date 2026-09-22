@@ -112,7 +112,11 @@ async function token(request: Request, env: Env, forExtension: boolean): Promise
     // Give the seconds back rather than charging for a session that never
     // opened - otherwise an upstream outage silently eats the day's budget.
     await ledger(env).release(leaseId, today(), 0);
-    throw err;
+    console.error("mint failed:", err);
+    // A named reason and its own status, so the page can say what actually
+    // happened. Falling through to the generic 500 meant an upstream failure
+    // and a missing key both reported to the user as rate limiting.
+    return json({ reason: "upstream" }, 503);
   }
 }
 

@@ -25,8 +25,11 @@
   // A cheap per-colo shield in front of the ledger. It cannot express "one
   // session per visitor" - the period is only ever 10 or 60 seconds - but it
   // absorbs refresh-spam before any of it costs a Durable Object request.
+  // Twelve, not six: someone whose first attempt fails will press the button
+  // again a few times, and being rate-limited for that is a worse failure than
+  // the one they were already hitting.
   "ratelimits": [
-    { "name": "DEMO_RL", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } }
+    { "name": "DEMO_RL", "namespace_id": "1001", "simple": { "limit": 12, "period": 60 } }
   ],
 
   "vars": {
