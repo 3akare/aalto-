@@ -233,18 +233,16 @@
       .answer-row .answer {
         flex: 1;
       }
-      #speakBtn {
-        flex: none;
-        margin-top: 2px;
-      }
-      #speakBtn.playing {
-        color: var(--coral);
+      .settings-note {
+        margin: -2px 0 2px;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: var(--muted, #82807a);
       }
 
       /* Must outrank #wave { display: block } - an ID selector, which no amount
          of attribute-selector stacking can beat. !important is the right tool
          here and the lint rule is wrong about this one. */
-      /* biome-ignore lint/complexity/noImportantStyles: must beat an ID selector */
       [hidden] {
         display: none !important;
       }
@@ -408,7 +406,7 @@
 
     <div class="stage">
       <span class="stage-label" id="stageLabel"></span>
-      <span class="lang-chip" id="langChip"></span>
+      <span class="lang-chip" id="modeChip" hidden></span>
 
       <button type="button" class="record" id="recordBtn" aria-label="Start listening"></button>
       <canvas id="wave" width="592" height="124" hidden></canvas>
@@ -424,33 +422,19 @@
       <div class="heard" id="heard" hidden></div>
       <div class="answer-row" id="answerRow" hidden>
         <div class="answer" id="answer"></div>
-        <button type="button" class="ghost-btn" id="speakBtn" aria-label="Read this aloud"></button>
       </div>
       <ul id="tasks"></ul>
     </section>
 
     <section class="settings" id="settings" hidden>
       <label>
-        Server
-        <input type="text" id="serverUrl" value="http://localhost:8787" />
+        AssemblyAI key
+        <input type="password" id="assemblyKey" placeholder="leave blank to use the shared demo" />
       </label>
+      <p class="settings-note" id="keyNote"></p>
       <label>
-        Request key
-        <input type="password" id="apiKey" placeholder="optional" />
-      </label>
-      <label>
-        Language
-        <select id="langSelect">
-          <option value="pcm">Pidgin ⇄ English</option>
-          <option value="yo">Yoruba ⇄ English</option>
-          <option value="ha">Hausa ⇄ English</option>
-          <option value="ig">Igbo ⇄ English</option>
-          <option value="sw">Swahili ⇄ English</option>
-          <option value="am">Amharic ⇄ English</option>
-          <option value="zu">Zulu ⇄ English</option>
-          <option value="rw">Kinyarwanda ⇄ English ⇄ French</option>
-          <option value="en">English only</option>
-        </select>
+        Demo endpoint
+        <input type="text" id="workerUrl" placeholder="https://aalto.workers.dev" />
       </label>
       <p class="link-row">
         <button type="button" class="link-btn" id="shortcutLink">Change shortcut</button>

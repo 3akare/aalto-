@@ -10,9 +10,9 @@
       "**",
       "!**/node_modules",
       "!**/dist",
-      "!benchmark/results",
-      "!benchmark/cache",
-      "!benchmark/audio-samples"
+      "!**/.wrangler",
+      "!extension/shared",
+      "!web/public/vendor"
     ]
   },
   "formatter": {
@@ -40,7 +40,7 @@
       "semicolons": "always",
       "trailingCommas": "es5"
     },
-    "globals": ["chrome"]
+    "globals": ["chrome", "AudioWorkletProcessor", "registerProcessor", "sampleRate", "Highlight"]
   },
   "json": {
     "formatter": {

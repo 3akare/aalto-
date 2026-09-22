@@ -3,17 +3,19 @@
  * Popup - a view, not the engine.
  *
  * Two ways in, deliberately different:
- *   • the keyboard shortcut starts listening immediately, because pressing it IS
- *     the request to talk;
- *   • opening it by hand shows a record button and waits, because a popup that
- *     started recording the moment you glanced at it would be unnerving.
+ *   • the keyboard shortcut starts a conversation immediately, because pressing
+ *     it IS the request to talk;
+ *   • opening it by hand shows a button and waits, because a window that
+ *     switched the microphone on the moment you glanced at it would be unnerving.
  *
- * Either way it ends the same: when you stop talking. Recording and the command
- * flow live in the background worker and the offscreen document, so closing this
- * window mid-command interrupts nothing.
+ * The session itself lives in the background worker and the offscreen document,
+ * so closing this window interrupts nothing - the agent keeps listening and
+ * keeps talking. That matters more here than it used to: a session survives
+ * across tabs and the popup is closed for most of it.
  */
 
 const stageLabel = document.getElementById("stageLabel");
+const modeChip = document.getElementById("modeChip");
 const recordBtn = document.getElementById("recordBtn");
 const recordHint = document.getElementById("recordHint");
 const wave = document.getElementById("wave");
@@ -24,16 +26,14 @@ const reply = document.getElementById("reply");
 const heardEl = document.getElementById("heard");
 const answerEl = document.getElementById("answer");
 const answerRow = document.getElementById("answerRow");
-const speakBtn = document.getElementById("speakBtn");
 const tasksEl = document.getElementById("tasks");
 
 const settings = document.getElementById("settings");
-const serverUrlInput = document.getElementById("serverUrl");
-const apiKeyInput = document.getElementById("apiKey");
-const langSelect = document.getElementById("langSelect");
+const assemblyKeyInput = document.getElementById("assemblyKey");
+const workerUrlInput = document.getElementById("workerUrl");
+const keyNote = document.getElementById("keyNote");
 const shortcutHint = document.getElementById("shortcutHint");
 const shortcutLink = document.getElementById("shortcutLink");
-const langChip = document.getElementById("langChip");
 
 // --- glyphs ----------------------------------------------------------------
 
@@ -42,55 +42,39 @@ loader.append(riIcon("loader", 26));
 recordBtn.append(riIcon("mic", 23));
 shortcutLink.append(document.createTextNode("Change shortcut"), riIcon("arrowUpRight", 12));
 
-speakBtn.append(riIcon("volumeUp", 16));
-
-// Reading the reply aloud is a choice, not a default. Speaking unprompted is
-// unwelcome in an office, a clinic waiting room or a queue, which is where a
-// civic form is often filled in.
-speakBtn.addEventListener("click", async () => {
-  const text = answerEl.textContent.trim();
-  if (!text || speakBtn.classList.contains("playing")) return;
-  speakBtn.classList.add("playing");
-  try {
-    await chrome.runtime.sendMessage({ type: "SPEAK", text });
-  } finally {
-    speakBtn.classList.remove("playing");
-  }
-});
-
 // --- settings --------------------------------------------------------------
 
-// Sahara requires a language and its codes name code-switch PAIRS - "pcm" is
-// the Pidgin-English model, not a Pidgin-only one. There is deliberately no
-// "auto": sending no hint got the English model, which quietly anglicised
-// Pidgin into nonsense ("wetin be CAC" -> "Waiting the CAC").
-const DEFAULT_LANGUAGE = "pcm";
-
-chrome.storage.local.get(["serverUrl", "langHint", "apiKey"], (data) => {
-  if (data.serverUrl) serverUrlInput.value = data.serverUrl;
-  if (data.apiKey) apiKeyInput.value = data.apiKey;
-  langSelect.value = data.langHint || DEFAULT_LANGUAGE;
-  if (!data.langHint) chrome.storage.local.set({ langHint: DEFAULT_LANGUAGE });
-  paintLanguage();
+chrome.storage.local.get(["assemblyKey", "workerUrl"], (data) => {
+  if (data.assemblyKey) assemblyKeyInput.value = data.assemblyKey;
+  if (data.workerUrl) workerUrlInput.value = data.workerUrl;
+  paintMode();
 });
 
-/** Show the active pair on the stage; buried in settings, a wrong choice is
- *  invisible until the transcript comes back in the wrong language. */
-function paintLanguage() {
-  const label = langSelect.options[langSelect.selectedIndex]?.text ?? "";
-  langChip.textContent = label.replace(" ⇄ English", "").replace(" only", "");
-  langChip.title = `Transcribing ${label}`;
+/**
+ * Say whose credits are being spent.
+ *
+ * Buried in settings this would be invisible until a bill or a rate limit
+ * arrived, and "which key am I on" is exactly the question someone asks after
+ * the microphone goes dead mid-sentence.
+ */
+function paintMode() {
+  const own = Boolean(assemblyKeyInput.value.trim());
+  modeChip.textContent = own ? "your key" : "shared demo";
+  modeChip.title = own
+    ? "Sessions are minted straight from your AssemblyAI key, in this browser."
+    : "Using the shared demo endpoint, which is capped. Add your own key for unlimited use.";
+  modeChip.hidden = false;
+  keyNote.textContent = own
+    ? "Your key stays in this browser. Sessions are minted directly from it."
+    : "Without a key, Aalto uses a shared demo endpoint with a daily cap.";
 }
 
-serverUrlInput.addEventListener("change", () => {
-  chrome.storage.local.set({ serverUrl: serverUrlInput.value });
+assemblyKeyInput.addEventListener("change", () => {
+  chrome.storage.local.set({ assemblyKey: assemblyKeyInput.value.trim() });
+  paintMode();
 });
-langSelect.addEventListener("change", () => {
-  chrome.storage.local.set({ langHint: langSelect.value });
-  paintLanguage();
-});
-apiKeyInput.addEventListener("change", () => {
-  chrome.storage.local.set({ apiKey: apiKeyInput.value });
+workerUrlInput.addEventListener("change", () => {
+  chrome.storage.local.set({ workerUrl: workerUrlInput.value.trim() });
 });
 
 settingsBtn.addEventListener("click", () => {
@@ -147,7 +131,7 @@ function drawWave() {
   const mid = h / 2;
 
   for (let i = 0; i < BAR_COUNT; i++) {
-    // Ease toward the target so the bars glide rather than strobe at 16fps.
+    // Ease toward the target so the bars glide rather than strobe.
     eased[i] += (levels[i] - eased[i]) * 0.35;
     const level = eased[i];
     const barH = Math.max(barW, level * h * 0.88);
@@ -174,19 +158,19 @@ function stopWave() {
 
 // --- stage -----------------------------------------------------------------
 
-let currentPhase = "idle";
-
+// One button for both directions. A live session has no natural end - the agent
+// decides when a turn is over, not the user - so the way out has to be the same
+// gesture as the way in.
 recordBtn.addEventListener("click", () => {
-  const type = currentPhase === "recording" ? "CANCEL_RECORDING" : "START_RECORDING";
-  chrome.runtime.sendMessage({ type }).catch(() => {});
+  chrome.runtime.sendMessage({ type: "TOGGLE_SESSION" }).catch(() => {});
 });
 
 const STAGE_LABEL = {
   idle: "",
-  recording: "Listening",
-  thinking: "Thinking",
+  connecting: "Connecting",
+  listening: "Listening",
+  speaking: "Speaking",
   working: "Working",
-  done: "",
   error: "",
   needs_mic: "Microphone needed",
 };
@@ -194,43 +178,36 @@ const STAGE_LABEL = {
 const TASK_ICON = {
   ok: "check",
   failed: "close",
-  needs_input: "question",
-  answered: "check",
-  pending: "loader",
+  running: "loader",
 };
 
 function render(s) {
   if (!s) return;
-  currentPhase = s.phase;
 
-  const listening = s.phase === "recording";
-  const busy = s.phase === "thinking" || s.phase === "working";
+  const live = s.phase === "listening" || s.phase === "speaking";
+  const busy = s.phase === "connecting" || s.phase === "working";
 
   stageLabel.textContent = STAGE_LABEL[s.phase] ?? "";
-  stageLabel.classList.toggle("live", listening);
+  stageLabel.classList.toggle("live", live);
 
-  recordBtn.hidden = listening || busy;
-  wave.hidden = !listening;
+  recordBtn.hidden = live || busy;
+  wave.hidden = !live;
   loader.hidden = !busy;
-  recordHint.hidden = listening || busy || !shortcutHint.textContent;
+  recordHint.hidden = live || busy || !shortcutHint.textContent;
 
-  if (listening) startWave();
+  if (live) startWave();
   else stopWave();
 
-  heardEl.textContent = s.transcript ? `“${s.transcript}”` : "";
-  heardEl.hidden = !s.transcript;
+  heardEl.textContent = s.heard ? `“${s.heard}”` : "";
+  heardEl.hidden = !s.heard;
 
-  const isError = s.phase === "error";
-  const headline = isError ? s.error : (s.summary ?? "");
+  const isError = s.phase === "error" || s.phase === "needs_mic";
+  const headline = isError ? s.error : (s.reply ?? "");
   answerEl.textContent = headline ?? "";
   answerRow.hidden = !headline;
   answerEl.classList.toggle("is-error", isError);
-  // Nothing to read aloud when the reply is an error message.
-  speakBtn.hidden = isError;
 
-  // An answered task's text is already the headline; repeating it below would
-  // say the same thing twice.
-  const listed = (s.tasks ?? []).filter((t) => t.status !== "answered");
+  const listed = s.activity ?? [];
   tasksEl.replaceChildren();
   for (const task of listed) {
     const li = document.createElement("li");
@@ -244,7 +221,7 @@ function render(s) {
   }
 
   reply.classList.toggle("has-answer", Boolean(headline) && listed.length > 0);
-  reply.hidden = !s.transcript && !headline && listed.length === 0;
+  reply.hidden = !s.heard && !headline && listed.length === 0;
 }
 
 chrome.runtime.onMessage.addListener((message) => {
@@ -254,14 +231,8 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 // The background worker reports whether this popup was summoned by the shortcut
-// (start talking straight away) or opened by hand (wait for the button).
+// (a session is already starting) or opened by hand (wait for the button).
 chrome.runtime.sendMessage({ type: "POPUP_OPENED" }, (res) => {
   if (chrome.runtime.lastError) return;
   render(res?.state);
-  // The shortcut starts recording in the worker before this window exists, so
-  // only ask for a fresh one if nothing is already under way.
-  const idle = !res?.state || res.state.phase === "idle" || res.state.phase === "done";
-  if (res?.autoStart && idle) {
-    chrome.runtime.sendMessage({ type: "START_RECORDING" }).catch(() => {});
-  }
 });
