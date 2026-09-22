@@ -133,11 +133,10 @@ async function start() {
     micBtn.disabled = false;
     setStatus("Listening. Interrupt it whenever you like.");
   } catch (err) {
-    await end(
-      err.name === "NotAllowedError"
-        ? "Microphone blocked. Allow it in the address bar and try again."
-        : err.message
-    );
+    // mic.js and agent-session.js both throw messages written to be read, so
+    // show what they said rather than second-guessing it here.
+    console.error("[Aalto] session failed to start:", err);
+    await end(err.message);
   }
 }
 

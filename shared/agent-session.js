@@ -91,9 +91,18 @@ export class AgentSession {
         }
       });
 
-      this.socket.addEventListener("close", () => {
+      this.socket.addEventListener("close", (event) => {
+        const wasReady = this.ready;
         this.ready = false;
-        if (!this.closing) this.onEvent({ type: "session.dropped" });
+        if (this.closing) return;
+        this.onEvent({ type: "session.dropped" });
+        // A socket that closes before session.ready would otherwise leave this
+        // promise pending forever: the caller is sitting on `await connect()`,
+        // so nothing after it ever runs and the button stays disabled with no
+        // error to show for it.
+        if (!wasReady) {
+          reject(new Error(`AssemblyAI closed the session before it started (code ${event.code})`));
+        }
       });
     });
   }
