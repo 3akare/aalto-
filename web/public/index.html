@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aalto - talk to your browser</title>
+    <meta
+      name="description"
+      content="A voice agent that lives in your browser. It reads the page, fills forms, writes your text and drives your tabs - and never submits anything it hasn't read back to you. Built on AssemblyAI's Voice Agent API."
+    />
+    <link rel="icon" href="assets/icons/mark.svg" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <a class="brand" href="#top">
+          <img src="assets/icons/mark.svg" alt="" />
+          Aalto
+        </a>
+        <span class="spacer"></span>
+        <nav>
+          <a href="#demo">Try it</a>
+          <a href="#what">What it does</a>
+          <a href="#install">Install</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <div class="wrap">
+        <div class="hero">
+          <span class="eyebrow">Built on AssemblyAI's Voice Agent API</span>
+          <h1>Talk to your browser.</h1>
+          <p class="lead">
+            Aalto listens while you work. Ask it what a page says and it answers in place. Tell it
+            what to write and it writes it where you are typing. Say what the form should contain
+            and it fills it in - then reads every field back to you before anything is submitted.
+          </p>
+          <div class="cta">
+            <a class="btn primary" href="#demo">Try it right here</a>
+            <a class="btn ghost" href="#install">Install the extension</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------------------------------------------------------------- -->
+
+      <section id="demo">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Try it without installing anything</h2>
+            <p class="premise">
+              A web page cannot drive your real browser, so this page ships a small one inside
+              itself. The agent drives it through exactly the same tool definitions the extension
+              executes against - the contract is real, only the hands are different. Watch the
+              panel on the right: every call the agent makes shows up there as it happens.
+            </p>
+          </div>
+
+          <div class="demo-grid">
+            <!-- the sandbox browser -->
+            <div class="panel">
+              <div class="chrome-bar" role="tablist" id="tabstrip"></div>
+              <div class="address" id="address"></div>
+              <div class="viewport" id="viewport">
+                <!-- Real DOM with real inputs: the agent's form tools work on
+                     these exactly as they would on any other page. -->
+                <div data-page="article" data-title="What a limited company actually is"
+                     data-url="https://example.org/guides/limited-company">
+                  <h2>What a limited company actually is</h2>
+                  <p>
+                    A limited company is a legal person in its own right. It can hold money, sign
+                    contracts and be taken to court separately from the people who own it. That
+                    separation is the whole point, and it is called limited liability.
+                  </p>
+                  <p>
+                    In practice it means that if the business cannot pay what it owes, the people
+                    who own it lose what they put in and no more. Their house is not on the table.
+                    A sole trader has no such line: the debts of the business are simply their
+                    debts.
+                  </p>
+                  <p>
+                    Registration is not instant. Expect a decision within five working days of
+                    filing, and note that a name can be refused for being too similar to one
+                    already on the register, which is the most common reason an application comes
+                    back.
+                  </p>
+                  <p>
+                    Once registered, the company must file accounts every year even if it traded
+                    nothing at all. Dormant accounts are short, but they are not optional, and the
+                    penalty for filing late starts at a hundred and fifty pounds.
+                  </p>
+                </div>
+
+                <div data-page="form" data-title="Register a business name"
+                     data-url="https://example.org/register" hidden>
+                  <h2>Register a business name</h2>
+                  <p>All fields are required unless marked otherwise.</p>
+
+                  <div class="field">
+                    <label for="f-name">Full name of applicant</label>
+                    <input type="text" id="f-name" />
+                  </div>
+
+                  <div class="field">
+                    <label for="f-phone">Phone number</label>
+                    <input type="text" id="f-phone" />
+                  </div>
+
+                  <div class="field">
+                    <label for="f-dob">Date of birth</label>
+                    <input type="date" id="f-dob" />
+                  </div>
+
+                  <div class="field">
+                    <label for="f-business">Proposed business name</label>
+                    <input type="text" id="f-business" />
+                  </div>
+
+                  <div class="field">
+                    <label for="f-sector">Sector</label>
+                    <select id="f-sector">
+                      <option value="">Choose one</option>
+                      <option>Agriculture</option>
+                      <option>Construction</option>
+                      <option>Education</option>
+                      <option>Hospitality</option>
+                      <option>Retail trade</option>
+                      <option>Software and technology</option>
+                      <option>Transport and logistics</option>
+                    </select>
+                  </div>
+
+                  <fieldset class="field" style="border: 0; padding: 0; margin-inline: 0">
+                    <div class="legend">Type of registration</div>
+                    <label class="opt"><input type="radio" name="regtype" value="Sole proprietorship" /> Sole proprietorship</label>
+                    <label class="opt"><input type="radio" name="regtype" value="Partnership" /> Partnership</label>
+                    <label class="opt"><input type="radio" name="regtype" value="Limited company" /> Limited company</label>
+                  </fieldset>
+
+                  <fieldset class="field" style="border: 0; padding: 0; margin-inline: 0">
+                    <div class="legend">Documents you already hold</div>
+                    <label class="opt"><input type="checkbox" name="docs" value="Proof of address" /> Proof of address</label>
+                    <label class="opt"><input type="checkbox" name="docs" value="Tax identification number" /> Tax identification number</label>
+                    <label class="opt"><input type="checkbox" name="docs" value="Passport photograph" /> Passport photograph</label>
+                  </fieldset>
+
+                  <button type="button" class="btn primary" id="f-submit">Submit application</button>
+                  <p id="f-done" hidden style="color: #2f7a43; font-weight: 500">
+                    Application submitted.
+                  </p>
+                </div>
+
+                <div data-page="tasks" data-title="Today" data-url="https://example.org/tasks" hidden>
+                  <h2>Today</h2>
+                  <ul class="task-list" id="tasks-list">
+                    <li>Chase the landlord about the lease</li>
+                    <li>Send the invoice for August</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- the inspector -->
+            <div class="panel inspector">
+              <header>What the agent is doing</header>
+              <div class="transcript">
+                <div class="said" id="said"></div>
+                <div class="replied" id="replied"></div>
+              </div>
+              <ul class="calls" id="calls"></ul>
+            </div>
+          </div>
+
+          <div class="controls">
+            <button type="button" class="mic" id="mic" data-live="false">
+              <span class="dot"></span>
+              <span id="micLabel">Start talking</span>
+            </button>
+            <div class="chips" id="chips"></div>
+            <div class="status" id="status"></div>
+            <div class="meter" title="Today's shared demo budget"><span id="meterFill"></span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+
+      <section id="what">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Seven things you can say</h2>
+            <p>
+              Each of these is a tool the agent can reach for on its own. One sentence often uses
+              several of them, and you can interrupt at any point.
+            </p>
+          </div>
+          <div class="caps">
+            <div class="cap">
+              <h3>Dictate anywhere</h3>
+              <p>
+                Speak into any box on any site. It writes what you meant, punctuated, in the
+                register of wherever it is going - and edits what is already there when you ask.
+              </p>
+              <span class="say">"Actually, make that shorter and less formal."</span>
+            </div>
+            <div class="cap">
+              <h3>Fill any form</h3>
+              <p>
+                One sentence fills several fields. It reads every answer back including the blanks,
+                asks when a value matches no option, and refuses to submit what you have not heard.
+              </p>
+              <span class="say">"My name is Ada Bello, I'm in retail, sole proprietorship."</span>
+            </div>
+            <div class="cap">
+              <h3>Ask the page</h3>
+              <p>
+                Questions about what is in front of you get answered from the page itself, and it
+                scrolls to the sentence it used - instead of dropping you on a results page.
+              </p>
+              <span class="say">"How long does registration take here?"</span>
+            </div>
+            <div class="cap">
+              <h3>Drive your tabs</h3>
+              <p>
+                Open, switch and close by description rather than by hunting. Anything it opens
+                goes behind what you are already reading.
+              </p>
+              <span class="say">"Open my inbox behind this and close the research tabs."</span>
+            </div>
+            <div class="cap">
+              <h3>Chain it, and interrupt it</h3>
+              <p>
+                One instruction can be several actions. If you change your mind halfway through a
+                sentence, say so - it stops talking and takes the new instruction.
+              </p>
+              <span class="say">"No - the other one."</span>
+            </div>
+            <div class="cap">
+              <h3>Work on what you selected</h3>
+              <p>
+                Highlight anything and have it summarised to your clipboard, rewritten in plain
+                language, or replaced in place.
+              </p>
+              <span class="say">"Summarise this into three bullets on my clipboard."</span>
+            </div>
+            <div class="cap">
+              <h3>Teach it once</h3>
+              <p>
+                Save a sequence you do often under a name you choose, then ask for it by that name
+                whenever you want it again.
+              </p>
+              <span class="say">"Remember that as my morning setup."</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+
+      <section id="install">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Install the extension</h2>
+            <p>
+              Two minutes, and no store listing to wait on. Chrome, Edge or any Chromium browser.
+            </p>
+          </div>
+          <ol class="steps">
+            <li>
+              <strong>Download and unzip</strong>
+              <p>
+                <a href="assets/aalto-1.0.0.zip" download>aalto-1.0.0.zip</a> - unzip it somewhere
+                you will not delete by accident, like your home folder. The extension loads from
+                that folder, so moving it later means loading it again.
+              </p>
+            </li>
+            <li>
+              <strong>Open your extensions page</strong>
+              <p>
+                Go to <code>chrome://extensions</code> and turn on <strong>Developer mode</strong>,
+                top right. Chrome only offers the next button once that is on.
+              </p>
+            </li>
+            <li>
+              <strong>Load unpacked</strong>
+              <p>
+                Click <strong>Load unpacked</strong> and pick the unzipped
+                <code>aalto</code> folder - the one with <code>manifest.json</code> directly inside
+                it, not its parent.
+              </p>
+            </li>
+            <li>
+              <strong>Grant the microphone once</strong>
+              <p>
+                Press <kbd>Alt</kbd>+<kbd>A</kbd>. The first time, Aalto opens a page asking for the
+                microphone - it has to ask from a real page, because the invisible document that
+                does the listening is allowed to use the microphone but not to prompt for it. Say
+                yes once and it will not ask again.
+              </p>
+            </li>
+            <li>
+              <strong>Start talking</strong>
+              <p>
+                <kbd>Alt</kbd>+<kbd>A</kbd> anywhere starts a conversation, and pressing it again
+                ends one. You can rebind it at <code>chrome://extensions/shortcuts</code>.
+              </p>
+            </li>
+          </ol>
+
+          <div class="note">
+            <strong>Whose credits does it spend?</strong> Out of the box the extension uses a shared
+            demo endpoint with a daily cap, so you can try it without signing up for anything. Put
+            your own AssemblyAI key into the extension's settings and it mints sessions straight
+            from that key, in your browser, with nothing in between and no cap. The key never
+            leaves your machine.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        Aalto is MIT-licensed. Speech, language and voice by
+        <a href="https://www.assemblyai.com/docs/voice-agents">AssemblyAI's Voice Agent API</a>.
+      </div>
+    </footer>
+
+    <script type="module" src="demo/main.js"></script>
+  </body>
+</html>

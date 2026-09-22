@@ -169,6 +169,11 @@ function copyToClipboard(text) {
 
 // --- matching ---------------------------------------------------------------
 
+// A content script cannot import a module: chrome.scripting.executeScript
+// injects files, not module graphs. So the shared matching code is spliced in
+// here by `npm run sync-shared` and committed, which keeps one source of truth
+// without giving up on-demand injection. Edit shared/matching.js, not this.
+// AALTO:MATCHING-START
 const STOPWORDS = new Set([
   "a",
   "an",
@@ -253,12 +258,28 @@ function similarity(spoken, questionText) {
   return overlap / Math.min(a.size, b.size);
 }
 
-/** Pick the option whose text best matches the spoken value, or null if none is close. */
+/** How close a spoken label must be to count as naming a field. */
+const FIELD_THRESHOLD = 0.34;
+
+/** How close a spoken value must be to count as naming an option. Higher on
+ *  purpose: naming the wrong field wastes a turn, picking the wrong option puts
+ *  a wrong answer into a form. */
+const OPTION_THRESHOLD = 0.5;
+
+/**
+ * Pick the option whose text best matches the spoken value, or null if none is
+ * close enough.
+ *
+ * Returning null rather than a best guess is the entire safety property. An
+ * earlier version fell back to the first option when nothing matched, which put
+ * a wrong answer into a form nobody had agreed to and reported failure at the
+ * same time - invisible until it was submitted.
+ */
 function bestOption(options, value) {
   const scored = options
     .map((o) => ({ ...o, score: similarity(value, o.text) }))
     .sort((x, y) => y.score - x.score);
-  return scored.length > 0 && scored[0].score >= 0.5 ? scored[0] : null;
+  return scored.length > 0 && scored[0].score >= OPTION_THRESHOLD ? scored[0] : null;
 }
 
 /** Accept "1990-04-12", "12/04/1990", and plain English like "12 April 1990". */
@@ -273,9 +294,17 @@ function toIsoDate(value) {
   }
 
   const parsed = Date.parse(trimmed);
-  if (!Number.isNaN(parsed)) return new Date(parsed).toISOString().slice(0, 10);
-  return null;
+  if (Number.isNaN(parsed)) return null;
+
+  // Built from the LOCAL parts, not toISOString(). Date.parse("12 April 1990")
+  // gives local midnight; converting that to UTC moves it back a day for anyone
+  // east of Greenwich, so a date of birth spoken aloud in Lagos was being
+  // entered as the day before.
+  const d = new Date(parsed);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+// AALTO:MATCHING-END
 
 /** React-controlled inputs ignore plain `.value =` assignment; dispatch real events too. */
 function setNativeValue(element, value) {
@@ -290,8 +319,6 @@ function setNativeValue(element, value) {
 }
 
 // --- finding fields ---------------------------------------------------------
-
-const TEXTLIKE = "text,email,tel,url,search,number,password,date,month,week,time,datetime-local";
 
 function isVisible(el) {
   if (!el.isConnected) return false;
@@ -567,7 +594,7 @@ function fillField(spokenLabel, value) {
     .map((f) => ({ field: f, score: similarity(spokenLabel, f.label) }))
     .sort((a, b) => b.score - a.score);
 
-  if (scored[0].score < 0.34) {
+  if (scored[0].score < FIELD_THRESHOLD) {
     return {
       ok: false,
       error: `nothing on this page matches "${spokenLabel}". The fields are: ${fields

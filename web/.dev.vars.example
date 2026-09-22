@@ -1,0 +1,4 @@
+# Local only. Never committed - the deployed Worker reads this from
+# `wrangler secret put ASSEMBLYAI_API_KEY`, and preview deployments need their
+# own copy of it or minting 500s on a URL you only test once.
+ASSEMBLYAI_API_KEY=

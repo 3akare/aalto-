@@ -289,11 +289,16 @@ async function openPermissionPage() {
  * Guard state.
  *
  * `filledAt` moves every time a field changes; `reviewedAt` moves every time
- * the form is read back. Submitting is allowed only when the second is later
- * than the first - i.e. the user has heard the current contents, not an earlier
- * version of them. Keyed by tab so two forms open at once cannot vouch for each
- * other.
+ * the form is read back. Submitting is allowed only when the second is at least
+ * as recent as the first - i.e. the user has heard the current contents, not an
+ * earlier version of them. Keyed by tab so two forms open at once cannot vouch
+ * for each other.
+ *
+ * Ordered by a counter, not by Date.now(): several fills and a read-back all
+ * land inside the same millisecond, which made the comparison refuse a form
+ * that had in fact just been read back.
  */
+let guardClock = 0;
 const guards = new Map(); // tabId -> { filledAt, reviewedAt }
 
 function resetGuards() {
@@ -316,7 +321,7 @@ async function runTool(name, args) {
   const target = TOOL_TARGET[name];
   if (!target) throw new Error(`there is no tool called ${name}`);
 
-  await note({ id, tool: name, status: "running", detail: describeCall(name, args) });
+  await note({ id, tool: name, status: "running", detail: describeCall(args) });
   if (state.phase === "listening") await setState({ phase: "working" });
 
   try {
@@ -338,7 +343,7 @@ async function note(entry) {
   await setState({ activity: activity.slice(-12) });
 }
 
-function describeCall(name, args) {
+function describeCall(args) {
   const first = Object.values(args ?? {})[0];
   return typeof first === "string" ? first.slice(0, 80) : "";
 }
@@ -405,7 +410,7 @@ async function runPageTool(name, args) {
   // The guard that matters. Checked before the call goes anywhere near the
   // page, and stated as the reason rather than a refusal, so the agent can
   // explain itself and do the right thing next.
-  if (name === "submit_form" && guard.reviewedAt <= guard.filledAt) {
+  if (name === "submit_form" && (guard.reviewedAt === 0 || guard.reviewedAt < guard.filledAt)) {
     throw new Error(
       "I haven't read this form back to them yet, so I can't submit it. " +
         "Call review_form first, then ask them to confirm."
@@ -415,8 +420,8 @@ async function runPageTool(name, args) {
   const res = await messageContentScript(tab, { type: "TOOL", name, args });
   if (!res?.ok) throw new Error(res?.error ?? "that didn't work on this page");
 
-  if (name === "fill_field" || name === "insert_text") guard.filledAt = Date.now();
-  if (name === "review_form") guard.reviewedAt = Date.now();
+  if (name === "fill_field" || name === "insert_text") guard.filledAt = ++guardClock;
+  if (name === "review_form") guard.reviewedAt = ++guardClock;
   if (name === "submit_form") guards.delete(tab.id);
 
   return res.detail;

@@ -1,0 +1,47 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aalto",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-22",
+
+  // One Worker serves the page AND the API. Keeping them on one origin is what
+  // removes CORS from the demo path entirely, and a Pages Function cannot own a
+  // Durable Object namespace - only bind to one declared in a Worker - so
+  // splitting them would mean two deploys to get one budget ledger.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Deliberately NOT a single-page-app fallback: that would swallow /api/*.
+    "not_found_handling": "404-page"
+  },
+
+  "durable_objects": {
+    "bindings": [{ "name": "DEMO_BUDGET", "class_name": "DemoBudget" }]
+  },
+  // new_sqlite_classes, not new_classes: the KV-backed flavour of Durable
+  // Objects is not available on the free plan, and the SQLite one is.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DemoBudget"] }],
+
+  // A cheap per-colo shield in front of the ledger. It cannot express "one
+  // session per visitor" - the period is only ever 10 or 60 seconds - but it
+  // absorbs refresh-spam before any of it costs a Durable Object request.
+  "ratelimits": [
+    { "name": "DEMO_RL", "namespace_id": "1001", "simple": { "limit": 6, "period": 60 } }
+  ],
+
+  "vars": {
+    // Seconds, because seconds are what AssemblyAI meters. A session is capped
+    // server-side at mint time, so a visitor cannot hold one open indefinitely.
+    "MAX_SESSION_SECONDS": "120",
+    "DAILY_CAP_SECONDS": "5400",
+    // The extension's own endpoint is stricter: it exists so a judge can try
+    // the installed extension without signing up, not to fund general use.
+    "EXT_MAX_SESSION_SECONDS": "180",
+    "EXT_DAILY_CAP_SECONDS": "2700"
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 }
+  }
+}

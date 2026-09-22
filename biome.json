@@ -12,7 +12,8 @@
       "!**/dist",
       "!**/.wrangler",
       "!extension/shared",
-      "!web/public/vendor"
+      "!web/public/vendor",
+      "!web/worker-configuration.d.ts"
     ]
   },
   "formatter": {
