@@ -1,108 +1,121 @@
 # Aalto
 
-A voice agent that lives in your browser, built for the Sahara/Intron Voice AI hackathon.
+A voice agent that lives in your browser, built on
+[AssemblyAI's Voice Agent API](https://www.assemblyai.com/docs/voice-agents).
 
-Press `Alt+A`, speak, stop speaking. Aalto understands naturally code-switched speech - Yoruba-English,
-Hausa-English, Igbo-English, Pidgin - and answers questions, fills Google Forms, manages tabs, and
-updates Todoist. It is an **accessibility** tool - for people more fluent speaking in a mixed
-local language than typing English-only forms - demonstrated on civic and
-public-service forms, where being shut out costs the most.
+Press `Alt+A` and talk. Aalto reads the page you are on and answers from it, writes text into
+whatever box you are in, fills forms, and drives your tabs. It is a conversation, not a command
+box: the session stays open, the agent decides when your turn has ended, and you can cut it off
+mid-sentence.
 
-The organising principle is **don't move the user**. Ask it what a term means and it tells you, in
-place, rather than throwing you into a search results page. Tabs it opens are opened behind what
-you're doing. Todoist needs no tab at all.
+It will not submit a form it has not read back to you, and it will not guess at a value you did
+not say. Both of those are code, not prompt instructions.
 
-## Repo layout
+## What you can say
 
-```
-aalto/
-├── extension/    Chrome extension (MV3) - mic capture, tab control, Google Forms filling
-├── server/       Node/TypeScript orchestrator - STT/TTS, planning, Todoist, benchmark harness
-├── benchmark/    Frozen sample manifest and generated results (audio is not committed)
-└── docs/         Solution description, ethics note, benchmark report
-```
+| | |
+| --- | --- |
+| **Dictate anywhere** | *"Reply to this saying I can do Thursday after two."* Writes what you meant, punctuated, in the register of wherever it is going. *"Make that shorter"* edits what is already there. |
+| **Fill any form** | *"My name is Ada Bello, I'm in retail, sole proprietorship."* One sentence, several fields. Reads every answer back **including the blanks**. |
+| **Ask the page** | *"How long does registration take here?"* Answered from the page in front of you, then highlighted where it came from - not a search results page. |
+| **Drive your tabs** | *"Open my inbox behind this and close the research tabs."* Anything it opens goes behind what you are reading. |
+| **Chain and interrupt** | One instruction can be several actions. Change your mind halfway through and it stops and takes the new one. |
+| **Work on a selection** | *"Summarise this into three bullets on my clipboard."* |
+| **Teach it once** | *"Remember that as my morning setup."* Replay by name later. |
 
 ## How it works
 
-1. **Capture** - an offscreen document owns the microphone and ends the command on ~1.1s of silence.
-   It lives outside the popup because Chrome destroys the popup the moment it loses focus, which is
-   exactly when Aalto opens or switches a tab.
-2. **Transcribe** - audio is normalised once to 16 kHz mono PCM16 WAV and sent to Intron's streaming
-   STT over WebSocket.
-3. **Plan** - Gemini maps the transcript onto a typed tool schema (`answer`, `search_web`, `open_url`,
-   `switch_tab`, `fill_form_field`, `submit_form`, `todoist_add/complete/update`, `clarify`). One
-   utterance can produce several tool calls.
-4. **Act** - server-side tasks (Todoist) run concurrently on the server; browser-side tasks are
-   dispatched to the extension, where independent actions run in parallel and form fields run in
-   order. One failure never sinks the batch.
-5. **Respond** - real per-task outcomes go back to the server, which produces one spoken sentence via
-   Intron TTS. Muting skips generation entirely rather than discarding audio.
-
-## Quick start
-
-```bash
-cd server && npm install && cp .env.example .env
+```
+Chrome extension (MV3)
+  popup.js          a view; the session outlives it
+  background.js     tool dispatch, the browser, the safety guards
+  offscreen.js      microphone, speaker, and the socket
+  content-agent.js  the DOM of whatever page you are on
+        |
+        |  wss://agents.assemblyai.com/v1/ws
+        v
+AssemblyAI Voice Agent API
+  speech in - LLM routing - tool calls - turn detection - barge-in - speech out
+        |
+        |  GET /api/ext/token
+        v
+Cloudflare Worker      mints single-use tokens, meters the shared demo
 ```
 
-Fill in `.env` (Intron, Gemini, Todoist; AssemblyAI and a HuggingFace token for the benchmark), then:
+There is no orchestration server. AssemblyAI owns the whole voice loop, so what would normally be
+a planner, a summariser, a voice-activity detector and a relay is instead a tool schema and a
+system prompt. The Worker exists only to mint tokens without putting an API key in a browser.
+
+Three details that are easy to get wrong and cost a day each:
+
+- **Tool results may only be sent while the session is idle**, which it signals with `reply.done`.
+  Returning them on receipt of `tool.call` looks exactly like an agent ignoring its own tools.
+- **Barge-in has to hook `input.speech.started`**, not the `reply.done` that eventually reports the
+  interruption - by then you have talked over the user for the better part of a second.
+- **Audio is base64 PCM16 mono 24 kHz inside a JSON message**, not binary frames, and capture has to
+  resample rather than force the `AudioContext` rate. Forcing it costs echo cancellation on Firefox
+  and garbles Safari.
+
+## Install
 
 ```bash
-npm run dev
+git clone <this repo> && cd aalto
 ```
 
-Load the extension:
-
-1. `chrome://extensions` → enable **Developer mode**
+1. `chrome://extensions` → turn on **Developer mode**
 2. **Load unpacked** → select `extension/`
-3. Press `Alt+A` (or click the icon). Grant the microphone once on the page that opens - an offscreen
-   document can use the mic but can't prompt for it, so the grant has to come from a real page.
+3. Press `Alt+A`. The first time, Aalto opens a page asking for the microphone - it has to ask from
+   a real page, because the offscreen document that does the listening may use the microphone but
+   may not prompt for it. Grant it once.
 
 The shortcut is rebindable at `chrome://extensions/shortcuts`.
 
-### Checking the setup
+**Whose credits?** Out of the box the extension uses a shared demo endpoint with a daily cap, so it
+works without signing up for anything. Put your own AssemblyAI key into the extension's settings
+and it mints sessions straight from that key, in your browser, with no cap and nothing in between.
+The key never leaves your machine.
+
+## The site
+
+`web/` is one Cloudflare Worker serving both a static page and the token API. The page walks
+through installing the extension and carries a demo you can talk to without installing it: a small
+browser rendered inside the page, driven by the agent through the same tool definitions the
+extension executes against.
 
 ```bash
-cd server && npm run smoke
+cd web
+npm install
+cp .dev.vars.example .dev.vars   # then paste in your AssemblyAI key
+npm run dev                      # http://localhost:8787
+npm run deploy
 ```
 
-Generates real speech with Intron TTS, pushes those exact bytes through every STT provider, and
-exercises the planner and Todoist - so credentials, transcoding, request shapes and model pins are
-all verified before a benchmark run spends anything.
+Before the first deploy: `wrangler secret put ASSEMBLYAI_API_KEY`. Preview deployments need their
+own copy, or minting fails on the one URL you only test once.
 
-## Benchmark
+## Shared code
 
-The code-switching benchmark is the substance of the submission. It evaluates four systems on
-[AfriSwitch](https://huggingface.co/datasets/intronhealth/AfriSwitch) - a gated dataset, so request
-access first.
+`shared/` is the single source of truth for the tool contract, the agent definition, the protocol
+client, the audio worklet and the matching logic. Neither an MV3 service worker nor a Worker's
+assets directory can load a file outside its own root, so `npm run sync-shared` copies it into both
+and the copies are committed - `Load unpacked` then works from a fresh clone with no install step.
 
-```bash
-npm run corpus -- smoke      # build and freeze the sample manifest
-git add benchmark/manifest && git commit    # the pre-registration record
-npm run benchmark -- smoke   # then: pilot, then main
-```
+The one wrinkle: a content script is injected as a file, not a module graph, so it cannot import
+anything. The sync script splices `shared/matching.js` into `extension/content-agent.js` between
+markers. Edit the shared file, never the copy.
 
-Tiers are `smoke` (5 utterances/language), `pilot` (25), `main` (100). The manifest is committed
-**before** any API call so the git timestamp stands as pre-registration; sampling is by deterministic
-content hash, reproducible from the seed alone.
+That arrangement is why "the demo runs the same tool contract as the extension" is a fact rather
+than a claim on a slide.
 
-Output lands in `benchmark/results/latest.md`. See [`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md).
-
-## Tests
+## Checks
 
 ```bash
-cd server && npm test      # metrics, alignment, normalisation, statistics, transcode
-npx tsc -p . --noEmit      # type-check
-npx biome check .          # lint and format (run from the repo root)
+npm run sync-shared     # must be a no-op on a clean tree
+npx biome check .       # lint and format
+cd web && npx wrangler deploy --dry-run
 ```
 
 ## Licence
 
-Aalto's source is MIT. It bundles a font and icon set under their own licences,
-and its benchmark output derives from a CC BY-NC-SA corpus whose terms carry
-over - see [NOTICE.md](NOTICE.md), which spells out which part is which.
-
-## Submission documents
-
-- [Solution description](docs/SOLUTION.md)
-- [Ethics, safety and inclusion note](docs/ETHICS.md)
-- [Benchmark report](docs/BENCHMARK_REPORT.md)
+MIT - see [LICENSE](LICENSE). It bundles Cormorant Garamond (SIL OFL 1.1) and Remix Icon
+(Apache-2.0); [NOTICE.md](NOTICE.md) says which is which and where each licence lives.
