@@ -21,17 +21,19 @@ const meterFill = document.getElementById("meterFill");
 const chipsEl = document.getElementById("chips");
 
 /**
- * Exact things to say.
+ * The tour, in order.
  *
- * People do not know what to say to a microphone, and a first turn that lands
- * on silence loses the demo in the first ten seconds. These are the four beats
- * worth seeing, in order.
+ * Nobody knows what to say to a microphone, and a first turn that lands on
+ * silence loses the demo in ten seconds. These four are sequenced to end on the
+ * only part worth remembering: beat three asks it to submit, and it refuses and
+ * reads the form back instead, because the guard is a conditional rather than a
+ * line in the prompt. Beat four is the confirmation it was holding out for.
  */
 const SUGGESTIONS = [
-  "What does this page say about how long registration takes?",
-  "Go to the form. My name is Ada Bello, I'm in retail trade, sole proprietorship.",
-  "Read the form back to me.",
-  "Now submit it.",
+  "How long does registration take, according to this page?",
+  "Go to the form. My name is Dana Whitfield, I'm in retail trade, sole trader.",
+  "Submit it.",
+  "Fine - read it back first, then submit.",
 ];
 
 let session = null;
@@ -229,17 +231,27 @@ window.addEventListener("pagehide", () => {
 
 function renderChips() {
   for (const text of SUGGESTIONS) {
+    const item = document.createElement("li");
+
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "chip";
-    chip.textContent = text;
-    // Clicking copies rather than sends: this is a voice demo, and the point is
-    // that saying it out loud works.
+    chip.append(document.createTextNode(text));
+
+    const flash = document.createElement("span");
+    flash.className = "copied";
+    chip.append(flash);
+
+    // Clicking copies rather than sends. This is a voice demo: the thing being
+    // demonstrated is that saying it out loud works, so a button that typed it
+    // for you would be demonstrating the wrong thing.
     chip.addEventListener("click", async () => {
       await navigator.clipboard?.writeText(text).catch(() => {});
-      chip.textContent = "copied - now say it";
-      setTimeout(() => (chip.textContent = text), 1400);
+      flash.textContent = "copied";
+      setTimeout(() => (flash.textContent = ""), 1400);
     });
-    chipsEl.append(chip);
+
+    item.append(chip);
+    chipsEl.append(item);
   }
 }

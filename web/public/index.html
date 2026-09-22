@@ -9,10 +9,11 @@
       content="A voice agent that lives in your browser. It reads the page, fills forms, writes your text and drives your tabs - and never submits anything it hasn't read back to you. Built on AssemblyAI's Voice Agent API."
     />
     <link rel="icon" href="assets/icons/mark.svg" />
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/InstrumentSans-Variable.woff2" crossorigin />
     <link rel="stylesheet" href="assets/styles.css" />
   </head>
   <body>
-    <header>
+    <header class="site-header">
       <div class="wrap">
         <a class="brand" href="#top">
           <img src="assets/icons/mark.svg" alt="" />
@@ -30,7 +31,6 @@
     <main id="top">
       <div class="wrap">
         <div class="hero">
-          <span class="eyebrow">Built on AssemblyAI's Voice Agent API</span>
           <h1>Talk to your browser.</h1>
           <p class="lead">
             Aalto listens while you work. Ask it what a page says and it answers in place. Tell it
@@ -51,22 +51,44 @@
           <div class="section-head">
             <h2>Try it without installing anything</h2>
             <p class="premise">
-              A web page cannot drive your real browser, so this page ships a small one inside
-              itself. The agent drives it through exactly the same tool definitions the extension
-              executes against - the contract is real, only the hands are different. Watch the
-              panel on the right: every call the agent makes shows up there as it happens.
+              This page can't drive your real browser, so it ships one inside itself - driven by the
+              same tool definitions the extension uses. Every call shows up on the right as it
+              happens.
             </p>
           </div>
 
           <div class="demo-grid">
             <!-- the sandbox browser -->
-            <div class="panel">
-              <div class="chrome-bar" role="tablist" id="tabstrip"></div>
-              <div class="address" id="address"></div>
+            <div class="browser">
+              <div class="browser-top">
+                <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+                <div class="tabstrip" role="tablist" id="tabstrip"></div>
+              </div>
+              <div class="browser-nav">
+                <button type="button" class="navbtn" disabled aria-label="Back">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                </button>
+                <button type="button" class="navbtn" disabled aria-label="Forward">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+                </button>
+                <button type="button" class="navbtn" disabled aria-label="Reload">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 10-.7 4.3" />
+                    <path d="M20 5v6h-6" />
+                  </svg>
+                </button>
+                <div class="omnibox">
+                  <svg class="lock" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="5" y="11" width="14" height="9" rx="2" />
+                    <path d="M8 11V8a4 4 0 118 0v3" />
+                  </svg>
+                  <span id="address"></span>
+                </div>
+              </div>
               <div class="viewport" id="viewport">
                 <!-- Real DOM with real inputs: the agent's form tools work on
                      these exactly as they would on any other page. -->
-                <div data-page="article" data-title="What a limited company actually is"
+                <div data-page="article" data-title="What a limited company is"
                      data-url="https://example.org/guides/limited-company">
                   <h2>What a limited company actually is</h2>
                   <p>
@@ -89,7 +111,7 @@
                   <p>
                     Once registered, the company must file accounts every year even if it traded
                     nothing at all. Dormant accounts are short, but they are not optional, and the
-                    penalty for filing late starts at a hundred and fifty pounds.
+                    penalty for filing late starts at a hundred and fifty.
                   </p>
                 </div>
 
@@ -132,24 +154,22 @@
                     </select>
                   </div>
 
-                  <fieldset class="field" style="border: 0; padding: 0; margin-inline: 0">
+                  <fieldset class="field">
                     <div class="legend">Type of registration</div>
-                    <label class="opt"><input type="radio" name="regtype" value="Sole proprietorship" /> Sole proprietorship</label>
+                    <label class="opt"><input type="radio" name="regtype" value="Sole trader" /> Sole trader</label>
                     <label class="opt"><input type="radio" name="regtype" value="Partnership" /> Partnership</label>
                     <label class="opt"><input type="radio" name="regtype" value="Limited company" /> Limited company</label>
                   </fieldset>
 
-                  <fieldset class="field" style="border: 0; padding: 0; margin-inline: 0">
+                  <fieldset class="field">
                     <div class="legend">Documents you already hold</div>
                     <label class="opt"><input type="checkbox" name="docs" value="Proof of address" /> Proof of address</label>
-                    <label class="opt"><input type="checkbox" name="docs" value="Tax identification number" /> Tax identification number</label>
-                    <label class="opt"><input type="checkbox" name="docs" value="Passport photograph" /> Passport photograph</label>
+                    <label class="opt"><input type="checkbox" name="docs" value="Tax reference number" /> Tax reference number</label>
+                    <label class="opt"><input type="checkbox" name="docs" value="Photo identification" /> Photo identification</label>
                   </fieldset>
 
-                  <button type="button" class="btn primary" id="f-submit">Submit application</button>
-                  <p id="f-done" hidden style="color: #2f7a43; font-weight: 500">
-                    Application submitted.
-                  </p>
+                  <button type="button" class="submit-btn" id="f-submit">Submit application</button>
+                  <p id="f-done" hidden class="submitted">Application submitted.</p>
                 </div>
 
                 <div data-page="tasks" data-title="Today" data-url="https://example.org/tasks" hidden>
@@ -164,7 +184,7 @@
 
             <!-- the inspector -->
             <div class="panel inspector">
-              <header>What the agent is doing</header>
+              <div class="inspector-head">What the agent is doing</div>
               <div class="transcript">
                 <div class="said" id="said"></div>
                 <div class="replied" id="replied"></div>
@@ -178,8 +198,17 @@
               <span class="dot"></span>
               <span id="micLabel">Start talking</span>
             </button>
-            <div class="chips" id="chips"></div>
             <div class="status" id="status"></div>
+
+            <div class="tour">
+              <p class="tour-head">
+                Press the button, then <strong>say these out loud, in order</strong>. It is a
+                one-minute tour, and the last two are the interesting part - it will read the form
+                back before it will submit it.
+              </p>
+              <ol class="chips" id="chips"></ol>
+            </div>
+
             <div class="meter" title="Today's shared demo budget"><span id="meterFill"></span></div>
           </div>
         </div>
@@ -190,14 +219,14 @@
       <section id="what">
         <div class="wrap">
           <div class="section-head">
-            <h2>Seven things you can say</h2>
+            <h2>Seven things you can do</h2>
             <p>
               Each of these is a tool the agent can reach for on its own. One sentence often uses
               several of them, and you can interrupt at any point.
             </p>
           </div>
           <div class="caps">
-            <div class="cap">
+            <div class="cap wide">
               <h3>Dictate anywhere</h3>
               <p>
                 Speak into any box on any site. It writes what you meant, punctuated, in the
@@ -205,47 +234,47 @@
               </p>
               <span class="say">"Actually, make that shorter and less formal."</span>
             </div>
-            <div class="cap">
+            <div class="cap wide">
               <h3>Fill any form</h3>
               <p>
                 One sentence fills several fields. It reads every answer back including the blanks,
                 asks when a value matches no option, and refuses to submit what you have not heard.
               </p>
-              <span class="say">"My name is Ada Bello, I'm in retail, sole proprietorship."</span>
+              <span class="say">"I'm a sole trader, retail, and I have photo ID."</span>
             </div>
             <div class="cap">
               <h3>Ask the page</h3>
               <p>
                 Questions about what is in front of you get answered from the page itself, and it
-                scrolls to the sentence it used - instead of dropping you on a results page.
+                scrolls to the sentence it used.
               </p>
-              <span class="say">"How long does registration take here?"</span>
+              <span class="say">"How long does this take?"</span>
             </div>
             <div class="cap">
               <h3>Drive your tabs</h3>
               <p>
-                Open, switch and close by description rather than by hunting. Anything it opens
-                goes behind what you are already reading.
+                Open, switch and close by description. Anything it opens goes behind what you are
+                already reading.
               </p>
-              <span class="say">"Open my inbox behind this and close the research tabs."</span>
+              <span class="say">"Close the research tabs."</span>
             </div>
             <div class="cap">
-              <h3>Chain it, and interrupt it</h3>
-              <p>
-                One instruction can be several actions. If you change your mind halfway through a
-                sentence, say so - it stops talking and takes the new instruction.
-              </p>
-              <span class="say">"No - the other one."</span>
-            </div>
-            <div class="cap">
-              <h3>Work on what you selected</h3>
+              <h3>Work on a selection</h3>
               <p>
                 Highlight anything and have it summarised to your clipboard, rewritten in plain
                 language, or replaced in place.
               </p>
-              <span class="say">"Summarise this into three bullets on my clipboard."</span>
+              <span class="say">"Put that in three bullets."</span>
             </div>
-            <div class="cap">
+            <div class="cap wide">
+              <h3>Chain it, and interrupt it</h3>
+              <p>
+                One instruction can be several actions. If you change your mind halfway through a
+                sentence, say so - it stops talking and takes the new instruction, mid-word.
+              </p>
+              <span class="say">"No - the other one."</span>
+            </div>
+            <div class="cap wide">
               <h3>Teach it once</h3>
               <p>
                 Save a sequence you do often under a name you choose, then ask for it by that name
@@ -263,59 +292,63 @@
         <div class="wrap">
           <div class="section-head">
             <h2>Install the extension</h2>
-            <p>
-              Two minutes, and no store listing to wait on. Chrome, Edge or any Chromium browser.
-            </p>
+            <p>Two minutes, no store listing to wait on. Chrome, Edge, or any Chromium browser.</p>
           </div>
+
           <ol class="steps">
-            <li>
+            <li class="step">
+              <span class="step-n">1</span>
               <strong>Download and unzip</strong>
               <p>
-                <a href="assets/aalto-1.0.0.zip" download>aalto-1.0.0.zip</a> - unzip it somewhere
-                you will not delete by accident, like your home folder. The extension loads from
-                that folder, so moving it later means loading it again.
+                <a href="assets/aalto-1.0.0.zip" download>aalto-1.0.0.zip</a> - put it somewhere
+                you will not delete by accident. The extension loads from that folder, so moving
+                it later means loading it again.
               </p>
             </li>
-            <li>
+            <li class="step">
+              <span class="step-n">2</span>
               <strong>Open your extensions page</strong>
               <p>
                 Go to <code>chrome://extensions</code> and turn on <strong>Developer mode</strong>,
-                top right. Chrome only offers the next button once that is on.
+                top right. The next button only appears once that is on.
               </p>
             </li>
-            <li>
+            <li class="step">
+              <span class="step-n">3</span>
               <strong>Load unpacked</strong>
               <p>
-                Click <strong>Load unpacked</strong> and pick the unzipped
-                <code>aalto</code> folder - the one with <code>manifest.json</code> directly inside
-                it, not its parent.
+                Click <strong>Load unpacked</strong> and pick the unzipped folder - the one with
+                <code>manifest.json</code> directly inside it, not its parent.
               </p>
             </li>
-            <li>
+            <li class="step">
+              <span class="step-n">4</span>
               <strong>Grant the microphone once</strong>
               <p>
-                Press <kbd>Alt</kbd>+<kbd>A</kbd>. The first time, Aalto opens a page asking for the
-                microphone - it has to ask from a real page, because the invisible document that
-                does the listening is allowed to use the microphone but not to prompt for it. Say
-                yes once and it will not ask again.
+                Press <kbd>Alt</kbd>+<kbd>A</kbd>. The first time, Aalto opens a page asking for
+                the microphone - it has to ask from a real page, because the invisible document
+                that does the listening may use the microphone but may not prompt for it.
               </p>
             </li>
-            <li>
+            <li class="step">
+              <span class="step-n">5</span>
               <strong>Start talking</strong>
               <p>
                 <kbd>Alt</kbd>+<kbd>A</kbd> anywhere starts a conversation, and pressing it again
-                ends one. You can rebind it at <code>chrome://extensions/shortcuts</code>.
+                ends one. Rebind it at <code>chrome://extensions/shortcuts</code>.
+              </p>
+            </li>
+            <li class="step is-note">
+              <span class="step-n" aria-hidden="true">?</span>
+              <strong>Whose credits does it spend?</strong>
+              <p>
+                Out of the box the extension uses a shared demo endpoint with a daily cap, so you
+                can try it without signing up for anything. Put your own AssemblyAI key into the
+                extension's settings and it mints sessions straight from that key, in your
+                browser, with nothing in between and no cap. The key never leaves your machine.
               </p>
             </li>
           </ol>
-
-          <div class="note">
-            <strong>Whose credits does it spend?</strong> Out of the box the extension uses a shared
-            demo endpoint with a daily cap, so you can try it without signing up for anything. Put
-            your own AssemblyAI key into the extension's settings and it mints sessions straight
-            from that key, in your browser, with nothing in between and no cap. The key never
-            leaves your machine.
-          </div>
         </div>
       </section>
     </main>

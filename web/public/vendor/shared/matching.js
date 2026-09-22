@@ -134,8 +134,8 @@ export function toIsoDate(value) {
 
   // Built from the LOCAL parts, not toISOString(). Date.parse("12 April 1990")
   // gives local midnight; converting that to UTC moves it back a day for anyone
-  // east of Greenwich, so a date of birth spoken aloud in Lagos was being
-  // entered as the day before.
+  // east of Greenwich, so a spoken date of birth was landing on the day before
+  // it was said.
   const d = new Date(parsed);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;

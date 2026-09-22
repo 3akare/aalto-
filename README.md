@@ -16,7 +16,7 @@ not say. Both of those are code, not prompt instructions.
 | | |
 | --- | --- |
 | **Dictate anywhere** | *"Reply to this saying I can do Thursday after two."* Writes what you meant, punctuated, in the register of wherever it is going. *"Make that shorter"* edits what is already there. |
-| **Fill any form** | *"My name is Ada Bello, I'm in retail, sole proprietorship."* One sentence, several fields. Reads every answer back **including the blanks**. |
+| **Fill any form** | *"My name is Dana Whitfield, I'm in retail, sole trader."* One sentence, several fields. Reads every answer back **including the blanks**. |
 | **Ask the page** | *"How long does registration take here?"* Answered from the page in front of you, then highlighted where it came from - not a search results page. |
 | **Drive your tabs** | *"Open my inbox behind this and close the research tabs."* Anything it opens goes behind what you are reading. |
 | **Chain and interrupt** | One instruction can be several actions. Change your mind halfway through and it stops and takes the new one. |

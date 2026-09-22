@@ -11,6 +11,18 @@ License 1.1. The full licence text ships with the font at
 
 Used for headings in the extension popup and on the site.
 
+## Instrument Sans
+
+Copyright 2022 The Instrument Sans Project Authors
+(<https://github.com/Instrument/instrument-sans>), licensed under the SIL Open
+Font License 1.1.
+
+The body face on the website. It stands in for Styrene B, which is the body face
+in the design reference and is not freely licensed. Self-hosted in
+[`web/public/assets/fonts/`](web/public/assets/fonts/) rather than loaded from
+Google Fonts, so the page owes nothing to a third party on the one load that
+matters.
+
 ## Remix Icon
 
 Copyright 2020 Remix Design, licensed under the Apache License 2.0
