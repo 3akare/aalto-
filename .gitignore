@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.dev.vars
+*.log
+
+# Wrangler local state
+.wrangler/
+
+# Personal prep notes, not part of the deliverable
+.private/

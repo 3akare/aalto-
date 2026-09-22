@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aalto - enable microphone</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        max-width: 520px;
+        margin: 12vh auto;
+        padding: 0 24px;
+        font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      button {
+        font-size: 15px;
+        font-weight: 600;
+        padding: 12px 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #1f6feb;
+        color: #fff;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 18px;
+        min-height: 3em;
+      }
+      .ok {
+        color: #137333;
+        font-weight: 600;
+      }
+      .bad {
+        color: #b3261e;
+        font-weight: 600;
+      }
+      ol {
+        padding-left: 20px;
+      }
+      code {
+        background: rgba(128, 128, 128, 0.18);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎙️ Let Aalto use your microphone</h1>
+    <p>
+      Aalto records only while you hold the talk button. Chrome needs your permission once, from a
+      normal page like this one - the popup can't ask, because it closes as soon as it loses focus.
+    </p>
+    <button type="button" id="grant">Enable microphone</button>
+    <div id="status"></div>
+    <script src="permission.js"></script>
+  </body>
+</html>

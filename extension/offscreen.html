@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aalto offscreen worker</title>
+  </head>
+  <body>
+    <!--
+      Invisible document that owns the microphone and the speaker.
+
+      The popup cannot do this job: it is destroyed the moment it loses focus,
+      which happens as soon as Aalto opens or switches a tab - i.e. during almost
+      every command. The background service worker cannot do it either, because
+      service workers have no DOM and so no getUserMedia and no Audio element.
+    -->
+    <script src="offscreen.js"></script>
+  </body>
+</html>
