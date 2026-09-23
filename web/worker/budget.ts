@@ -1,15 +1,10 @@
 /**
- * The demo budget ledger.
- *
- * A public voice demo is an open tap on a metered API, and the meter is a fixed
- * pot of hackathon credit. This object is the thing standing between a judge
- * opening the page and that pot being empty by lunchtime.
+ * The demo budget ledger - what stands between a public voice demo and an empty
+ * pot of credit.
  *
  * A Durable Object rather than KV because the decision is read-modify-write:
  * KV's eventually-consistent reads let two visitors arriving at once both see
- * budget remaining and both spend it, which is precisely the case the cap
- * exists for. SQLite-backed, because that is the flavour available on the free
- * plan.
+ * budget remaining and both spend it. SQLite-backed, the flavour on the free plan.
  */
 
 import { DurableObject } from "cloudflare:workers";
@@ -31,15 +26,9 @@ export interface BudgetStatus {
 const LEASE_SLACK_MS = 10_000;
 
 /**
- * How many sessions one visitor may hold at once.
- *
- * Not one. A visitor is an address, and judges sit behind shared ones - an
- * office, a conference network - where a strict lock means the second person to
- * try is told someone else is already using it. A stale lease from a tab that
- * closed without reporting in does the same thing to the same person.
- *
- * Two is enough to stop one tab-spamming visitor while leaving the daily cap as
- * the thing that actually bounds spend, which is what it is for.
+ * Not one: a visitor is an address, and judges sit behind shared ones, where a
+ * strict lock means the second person to try is told someone else is using it.
+ * Two stops tab-spam; the daily cap is what actually bounds spend.
  */
 const MAX_CONCURRENT_PER_VISITOR = 2;
 
@@ -55,20 +44,19 @@ export class DemoBudget extends DurableObject {
         lease_id   TEXT PRIMARY KEY,
         visitor    TEXT NOT NULL,
         granted    INTEGER NOT NULL,
+        issued_at  INTEGER NOT NULL DEFAULT 0,
         expires_at INTEGER NOT NULL
       );
     `);
+    try {
+      // For ledgers created before issued_at existed; throws once it is there.
+      this.sql.exec("ALTER TABLE leases ADD COLUMN issued_at INTEGER NOT NULL DEFAULT 0");
+    } catch {
+      // Already migrated.
+    }
   }
 
-  /**
-   * Take out a lease, charging the worst case up front.
-   *
-   * Deducting the full session length at mint and refunding the unused part on
-   * release is the only arrangement that survives the common case: someone
-   * opens the demo, says two sentences, and shuts the laptop. Charging on
-   * release alone would let that leak the whole cap; charging up front means
-   * the worst they cost is what they were granted.
-   */
+  /** Take out a lease, charging the full session length up front. */
   mint(visitor: string, day: string, seconds: number, dailyCap: number): MintResult {
     this.sweep();
 
@@ -81,12 +69,14 @@ export class DemoBudget extends DurableObject {
     if (granted + seconds > dailyCap) return { ok: false, reason: "daily_limit" };
 
     const leaseId = crypto.randomUUID();
+    const now = Date.now();
     this.sql.exec(
-      "INSERT INTO leases (lease_id, visitor, granted, expires_at) VALUES (?, ?, ?, ?)",
+      "INSERT INTO leases (lease_id, visitor, granted, issued_at, expires_at) VALUES (?, ?, ?, ?, ?)",
       leaseId,
       visitor,
       seconds,
-      Date.now() + seconds * 1000 + LEASE_SLACK_MS
+      now,
+      now + seconds * 1000 + LEASE_SLACK_MS
     );
     this.sql.exec(
       `INSERT INTO budget (day, seconds_granted) VALUES (?, ?)
@@ -98,22 +88,36 @@ export class DemoBudget extends DurableObject {
     return { ok: true, leaseId, seconds };
   }
 
-  /** Hand back what was granted but not used. Best effort: the client reports it. */
-  release(leaseId: string, day: string, usedSeconds: number): void {
+  /**
+   * Free the slot. Deliberately does NOT refund.
+   *
+   * Minting is the irreversible act - the token is good for its full length
+   * from the moment it is issued and nothing here can revoke it. So any refund
+   * the client can reach is a way to mint unlimited sessions against a cap that
+   * never moves: release the lease, open the socket anyway, and AssemblyAI
+   * bills a session the ledger thinks was free.
+   */
+  release(leaseId: string): void {
+    this.sql.exec("DELETE FROM leases WHERE lease_id = ?", leaseId);
+  }
+
+  /**
+   * Undo a grant for a session that was never issued. Only reachable when the
+   * upstream mint failed - something the Worker knows and the client cannot
+   * claim. Without it an outage would eat the day's budget one request at a time.
+   */
+  cancel(leaseId: string, day: string): void {
     const lease = this.sql
       .exec<{ granted: number }>("SELECT granted FROM leases WHERE lease_id = ?", leaseId)
       .toArray()[0];
-    if (!lease) return; // already swept, or never existed; either way nothing to refund
+    if (!lease) return;
 
-    const refund = Math.max(0, lease.granted - Math.min(usedSeconds, lease.granted));
     this.sql.exec("DELETE FROM leases WHERE lease_id = ?", leaseId);
-    if (refund > 0) {
-      this.sql.exec(
-        "UPDATE budget SET seconds_granted = MAX(0, seconds_granted - ?) WHERE day = ?",
-        refund,
-        day
-      );
-    }
+    this.sql.exec(
+      "UPDATE budget SET seconds_granted = MAX(0, seconds_granted - ?) WHERE day = ?",
+      lease.granted,
+      day
+    );
   }
 
   status(day: string, dailyCap: number): BudgetStatus {
@@ -132,13 +136,8 @@ export class DemoBudget extends DurableObject {
     return row?.seconds_granted ?? 0;
   }
 
-  /**
-   * Drop leases nobody came back to release.
-   *
-   * Expired without a release means the tab was closed mid-session, so the
-   * grant stays spent - guessing in the visitor's favour here is exactly how
-   * the cap gets talked past.
-   */
+  /** Drop leases nobody came back to release. The grant stays spent: guessing
+   *  in the visitor's favour is how a cap gets talked past. */
   private sweep(): void {
     this.sql.exec("DELETE FROM leases WHERE expires_at < ?", Date.now());
   }
