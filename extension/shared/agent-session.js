@@ -1,13 +1,10 @@
 /**
- * The AssemblyAI Voice Agent protocol client.
+ * The AssemblyAI Voice Agent protocol client: one WebSocket session, and - the
+ * part that is easy to get wrong - returning tool results at the moment the
+ * protocol will accept them.
  *
- * Owns one WebSocket session: opening it, configuring it, feeding it audio,
- * and - the part that is easy to get wrong - returning tool results at the
- * moment the protocol will accept them.
- *
- * Deliberately free of chrome.* and of DOM, so the extension's offscreen
- * document and the web demo run the same code. Whoever constructs it supplies
- * a `runTool` callback; that is the only thing that differs between them.
+ * Free of chrome.* and DOM, so the extension and the web demo run the same
+ * code; only the `runTool` callback differs.
  */
 
 import { buildSessionUpdate } from "./agent-config.js";
@@ -40,24 +37,21 @@ export class AgentSession {
    * @param {(pcm: Int16Array) => void} [opts.onAudio]  a chunk of the agent's speech
    * @param {() => void} [opts.onInterrupt]  cut playback off; the user is talking
    */
-  constructor({ token, runTool, onEvent, onAudio, onInterrupt, tools, greeting, output }) {
+  constructor({ token, runTool, onEvent, onAudio, onInterrupt, tools, greeting, output, context }) {
     this.token = token;
     this.runTool = runTool;
     this.onEvent = onEvent ?? (() => {});
     this.onAudio = onAudio ?? (() => {});
     this.onInterrupt = onInterrupt ?? (() => {});
-    this.config = { tools, greeting, output };
+    this.config = { tools, greeting, output, context };
 
     this.socket = null;
     this.ready = false;
     this.closing = false;
 
-    /**
-     * The protocol will only accept tool results while it is idle, which it
-     * signals by `reply.done` being the most recent thing it sent. Sending on
-     * receipt of `tool.call` instead produces an agent that appears to ignore
-     * its own tools - it is not an error, the results are simply dropped.
-     */
+    // The protocol accepts tool results only while idle, which it signals with
+    // `reply.done`. Sending on `tool.call` instead produces an agent that
+    // appears to ignore its own tools - no error, the results are just dropped.
     this.lastEventType = null;
     this.pendingResults = [];
     this.inFlight = 0;
@@ -101,7 +95,11 @@ export class AgentSession {
         // so nothing after it ever runs and the button stays disabled with no
         // error to show for it.
         if (!wasReady) {
-          reject(new Error(`AssemblyAI closed the session before it started (code ${event.code})`));
+          // The code is for whoever is debugging; the message is for whoever is using it.
+          console.warn("[Aalto] session closed before ready, code", event.code);
+          reject(
+            new Error("AssemblyAI closed the session before it started. Press again to retry.")
+          );
         }
       });
     });
@@ -110,16 +108,13 @@ export class AgentSession {
   #handle(frame) {
     switch (frame.type) {
       case "reply.audio":
-        // Not passed to onEvent: these arrive many times a second and the UI
-        // has nothing to say about them.
+        // Not passed to onEvent: many a second, and the UI has nothing to say.
         this.onAudio(fromBase64(frame.data));
         return;
 
       case "input.speech.started":
-        // Barge-in, and the earliest possible notice of it. Waiting for the
-        // reply.done that eventually reports the interruption would leave the
-        // agent talking over the user for the better part of a second, which
-        // is exactly the thing that makes voice assistants feel deaf.
+        // The earliest notice of barge-in. Waiting for the reply.done that
+        // reports it leaves the agent talking over the user for most of a second.
         this.lastEventType = frame.type;
         this.onEvent(frame);
         this.onInterrupt();
@@ -135,9 +130,7 @@ export class AgentSession {
         this.lastEventType = frame.type;
         this.onEvent(frame);
         if (frame.status === "interrupted") {
-          // The turn these results belonged to is gone. Sending them now would
-          // answer a question nobody asked any more. Playback was already cut
-          // when the user started speaking.
+          // That turn is gone; these results would answer a dead question.
           this.pendingResults.length = 0;
         } else {
           this.#flush();
@@ -156,8 +149,7 @@ export class AgentSession {
     try {
       result = await this.runTool(frame.name, frame.arguments ?? {});
     } catch (err) {
-      // The agent handles a failure far better than a silence: it can say what
-      // went wrong, or try another way.
+      // A message the agent can read out beats a silence it cannot explain.
       result = `That failed: ${err.message}`;
     } finally {
       this.inFlight--;
@@ -180,20 +172,8 @@ export class AgentSession {
     this.socket.send(JSON.stringify({ type: "input.audio", audio: toBase64(pcm) }));
   }
 
-  /** Send a typed turn instead of speech. Same agent, same tools, no audio minutes. */
-  sendText(text) {
-    if (this.socket?.readyState !== WebSocket.OPEN) return;
-    this.socket.send(JSON.stringify({ type: "conversation.message", role: "user", content: text }));
-    this.socket.send(JSON.stringify({ type: "reply.create" }));
-  }
-
-  /**
-   * Close down properly.
-   *
-   * Just closing the socket leaves the session billing for its grace window,
-   * so say session.end and give the server a moment to acknowledge it. On a
-   * 90-second demo session that window is a third of the cost again.
-   */
+  /** Say session.end and wait: closing the socket alone leaves the session
+   *  billing through its grace window. */
   async end() {
     if (this.closing) return;
     this.closing = true;
@@ -224,8 +204,8 @@ export class AgentSession {
   }
 }
 
+// The browser withholds the real reason a WebSocket handshake failed; this is
+// the overwhelmingly likely one.
 function describeSocketFailure() {
-  // The browser deliberately withholds the reason a WebSocket handshake failed,
-  // so guessing precisely is not possible. This is the overwhelmingly likely one.
-  return "couldn't reach AssemblyAI - the token may have expired or already been used";
+  return "couldn't open a session with AssemblyAI. Press again to try another.";
 }

@@ -22,53 +22,39 @@ const str = (description) => ({ type: "string", description });
 
 /** @type {ReadonlyArray<{type:"function", name:string, description:string, parameters:object}>} */
 export const AALTO_TOOLS = [
-  // --- speaking -------------------------------------------------------------
+  // --- seeing what they see -------------------------------------------------
   {
     type: "function",
-    name: "answer",
+    name: "get_context",
     description:
-      "Answer a question directly, in place, without opening or changing anything. Use this " +
-      "for definitions, factual questions, translations, conversions, arithmetic and " +
-      "explanations - anything the user simply wants to KNOW. This is the preferred tool " +
-      "whenever they are asking rather than instructing: it keeps them where they are instead " +
-      "of sending them to a search results page. Only fall back to search_web when the answer " +
-      "depends on something current or local that you cannot state reliably.",
-    parameters: obj(
-      {
-        text: str(
-          "The answer, in one or two short sentences of plain language. It will be spoken " +
-            "aloud, so write it to be heard: no markdown, no lists, no citations, no preamble."
-        ),
-      },
-      ["text"]
-    ),
+      "See what the user is looking at right now. Returns the active tab (with its id), the " +
+      "text box they are in and everything it contains, any text they have selected, and their " +
+      "other open tabs with ids - marking the ones you opened. You cannot see the screen, so " +
+      "call this FIRST whenever they point at something without naming it ('this', 'that', " +
+      "'it', 'here', 'the text', 'the box', 'the tab', 'the new one') and before acting on a " +
+      "tab or a text box. It is instant; never guess instead.",
+    parameters: obj({}),
   },
-  {
-    type: "function",
-    name: "clarify",
-    description:
-      "Ask a short question back when what you heard is too ambiguous or incomplete to act on " +
-      "safely. Prefer this over guessing whenever acting on the wrong reading would put text " +
-      "somewhere, change a field, or close something.",
-    parameters: obj({ question: str("One short question to speak back.") }, ["question"]),
-  },
-
-  // --- reading the page -----------------------------------------------------
   {
     type: "function",
     name: "read_text",
     description:
-      "Read text from the page the user is looking at, so you can answer from what is actually " +
-      "in front of them rather than from memory. Use source 'page' for the main article or " +
-      "body text, 'selection' for whatever they have highlighted, and 'field' for the contents " +
-      "of the text box they are currently typing in. Call this BEFORE answering any question " +
-      "about 'this page', 'this', 'here', or 'what I just wrote'.",
+      "Read text from a page so you can answer from what is actually there rather than from " +
+      "memory. Source 'page' reads the main text of a tab - the active one, or any other tab by " +
+      "tab_id without switching to it (use this to read a tab you opened in the background). " +
+      "'selection' reads what they have highlighted and 'field' the box they are typing in, both " +
+      "on the active tab. get_context already includes the box and the selection, so you only " +
+      "need 'field' or 'selection' when get_context says the text was cut short.",
     parameters: obj(
       {
         source: {
           type: "string",
           enum: ["page", "selection", "field"],
           description: "Which text to read.",
+        },
+        tab_id: {
+          type: "integer",
+          description: "Read this tab instead of the active one. Only for source 'page'.",
         },
       },
       ["source"]
@@ -78,13 +64,60 @@ export const AALTO_TOOLS = [
     type: "function",
     name: "highlight",
     description:
-      "Scroll to a passage on the page and highlight it, so the user can see where an answer " +
-      "came from. Use it straight after answering a question about the page, with the exact " +
-      "wording you based the answer on.",
+      "Scroll to a passage on the active page and highlight it, so the user can see where an " +
+      "answer came from. Use it straight after answering a question about the page they are on, " +
+      "with the exact wording you based the answer on.",
     parameters: obj(
       { quote: str("A short exact phrase from the page - a few words is enough to locate it.") },
       ["quote"]
     ),
+  },
+
+  // --- moving around the page ----------------------------------------------
+  {
+    type: "function",
+    name: "scroll_page",
+    description:
+      "Scroll the page they are on: 'scroll down', 'a bit more', 'go back up', 'to the top', " +
+      "'to the bottom'. Returns how far down the page they now are, so you know when there is " +
+      "nothing further to scroll to.",
+    parameters: obj(
+      {
+        direction: { type: "string", enum: ["down", "up", "top", "bottom"] },
+        amount: {
+          type: "string",
+          enum: ["small", "page", "large"],
+          description: "'small' for 'a bit', 'page' by default, 'large' for 'a lot' or 'way down'.",
+        },
+      },
+      ["direction"]
+    ),
+  },
+  {
+    type: "function",
+    name: "go_to_section",
+    description:
+      "Jump to a part of the page by its heading: 'take me to pricing', 'go to the FAQ', 'the " +
+      "part about returns'. If nothing matches it returns the sections the page does have, so " +
+      "you can pick the right one or tell them what is there.",
+    parameters: obj({ section: str("The section they asked for, in their words.") }, ["section"]),
+  },
+  {
+    type: "function",
+    name: "find_on_page",
+    description:
+      "Find words on the page they are on, like Ctrl+F. Highlights every match, scrolls to the " +
+      "first, and returns how many there are with the sentence around each. Use it for 'find', " +
+      "'where does it say', 'does this mention', and answer from the sentences it returns. For " +
+      "'the next one' or 'the one before', call it with step and no query.",
+    parameters: obj({
+      query: str("The words to find - short and exact, like 'refund' or 'free trial'."),
+      step: {
+        type: "string",
+        enum: ["next", "previous"],
+        description: "Move through the matches of the last search instead of searching again.",
+      },
+    }),
   },
 
   // --- writing text ---------------------------------------------------------
@@ -92,21 +125,25 @@ export const AALTO_TOOLS = [
     type: "function",
     name: "insert_text",
     description:
-      "Type text into whatever box the user is currently focused on. This is dictation, so " +
-      "write what they MEANT to write, not a transcript of how they said it: drop the filler " +
-      "and false starts, punctuate it, and match the register of where it is going - a chat " +
-      "message is not an email. When they ask you to change what is already there ('make that " +
-      "shorter', 'more formal', 'drop the last sentence'), first read_text with source 'field', " +
-      "then rewrite it and insert with mode 'replace'.",
+      "Put text into the box the user is working in. Two jobs. (1) Dictation: they tell you " +
+      "what to write - write what they MEANT, not a transcript: drop filler and false starts, " +
+      "punctuate it, match the register of where it is going. Use mode 'append'. (2) Working " +
+      "on their text: when they ask you to summarize, shorten, rewrite, fix, translate or " +
+      "reformat 'this' or 'it' while in a box, take the text from get_context, do the work, " +
+      "and put the result back with mode 'replace' - or 'replace_selection' if they had " +
+      "selected only part of it. The result goes in the box; do not read it aloud unless asked. " +
+      "Never change a number, unit, name or fact while rewriting: 'up four points' stays 'up " +
+      "four points' (not percent), '$2.4M' stays '$2.4M'. Shorter means fewer words, not " +
+      "different facts.",
     parameters: obj(
       {
-        text: str("The finished text to type."),
+        text: str("The finished text."),
         mode: {
           type: "string",
-          enum: ["replace", "append"],
+          enum: ["append", "replace", "replace_selection"],
           description:
-            "'append' adds to what is there, which is the normal case while dictating. " +
-            "'replace' clears the box first - only for an explicit rewrite.",
+            "'append' adds after what is there (dictation). 'replace' swaps the whole box for " +
+            "this text. 'replace_selection' swaps only the part they have selected.",
         },
       },
       ["text"]
@@ -116,9 +153,9 @@ export const AALTO_TOOLS = [
     type: "function",
     name: "copy_to_clipboard",
     description:
-      "Put text on the user's clipboard so they can paste it wherever they want. Use this when " +
-      "they ask for something 'to my clipboard', or when they want a summary or rewrite they " +
-      "will place themselves rather than have typed in immediately.",
+      "Put text on the user's clipboard. Use this when they ask for something 'to my " +
+      "clipboard' or 'so I can paste it', or want a summary or rewrite they will place " +
+      "themselves rather than have typed into a box.",
     parameters: obj({ text: str("The text to copy.") }, ["text"]),
   },
 
@@ -164,52 +201,67 @@ export const AALTO_TOOLS = [
   // --- tabs -----------------------------------------------------------------
   {
     type: "function",
-    name: "open_url",
+    name: "search_web",
     description:
-      "Open a page in a new tab BEHIND what the user is currently doing, so they are not moved " +
-      "off what they were reading.",
-    parameters: obj({ url: str("The address to open.") }, ["url"]),
+      "Search the web and get the results back to read. Use it for anything current or local " +
+      "you cannot state reliably - weather, news, prices, scores, times, opening hours, recent " +
+      "events. It opens the search in a background tab, waits for it, and returns the text of " +
+      "the results page plus the tab's id: read that and answer out loud in a sentence. The " +
+      "answer is in what this returns, not on the page they are looking at. Set switch_to only " +
+      "if they asked to see the results. For anything you simply know, just say it.",
+    parameters: obj(
+      {
+        query: str("The search query."),
+        switch_to: {
+          type: "boolean",
+          description: "Bring the results tab to the front. Only when they asked to see it.",
+        },
+      },
+      ["query"]
+    ),
   },
   {
     type: "function",
-    name: "search_web",
+    name: "open_url",
     description:
-      "Search the web in a new background tab. Use this only when the user actually wants to " +
-      "browse results, or when the answer depends on something current or local you cannot " +
-      "state reliably. For anything you simply know, use answer instead - do not send them to " +
-      "a results page for a question you could have answered.",
-    parameters: obj({ query: str("The search query.") }, ["query"]),
+      "Open a page in a new tab and take them to it - opening something is a request to see it. " +
+      "Returns the tab's id and title. Set background only when they say 'in the background', " +
+      "'for later' or 'behind this'.",
+    parameters: obj(
+      {
+        url: str("The address to open."),
+        background: {
+          type: "boolean",
+          description: "Keep the new tab behind the current one instead of switching to it.",
+        },
+      },
+      ["url"]
+    ),
   },
   {
     type: "function",
     name: "switch_tab",
     description:
-      "Move the user to one of their open tabs, described however they described it - by site, " +
-      "by what is on it, or as 'the next one' or 'the one before'. This is the one action that " +
-      "deliberately takes them somewhere, because going there is what they asked for.",
-    parameters: obj(
-      { description: str("e.g. 'the gmail tab', 'the docs about pricing', 'next tab'.") },
-      ["description"]
-    ),
+      "Bring one of their open tabs to the front. Pass tab_id whenever you know it - from " +
+      "get_context, or from the open_url or search_web call that opened it ('the tab you " +
+      "opened', 'the new one', 'that tab' means the one you opened most recently). Otherwise " +
+      "describe it the way they did: by site or topic, 'first', 'last', 'next' or 'previous'.",
+    parameters: obj({
+      tab_id: { type: "integer", description: "The id of the tab to switch to." },
+      description: str("How they described it, when you do not have an id."),
+    }),
   },
   {
     type: "function",
     name: "close_tabs",
     description:
-      "Close tabs matching a description. Closing is not undoable from here, so if the " +
-      "description is broad enough to catch something they might not mean, use clarify first " +
-      "and tell them how many it would close.",
-    parameters: obj({ description: str("e.g. 'the youtube tabs', 'everything about pricing'.") }, [
-      "description",
-    ]),
-  },
-  {
-    type: "function",
-    name: "list_tabs",
-    description:
-      "List what the user currently has open. Use it to ground a vague reference to 'that tab' " +
-      "before switching or closing anything.",
-    parameters: obj({}),
+      "Close tabs, by id or by description ('the youtube tabs', 'the tabs you opened'). " +
+      "Closing cannot be undone from here, so if a description could catch something they " +
+      "might not mean, ask them first and tell them how many it would close.",
+    parameters: obj({
+      tab_ids: { type: "array", items: { type: "integer" }, description: "Ids of tabs to close." },
+      description: str("How they described them, when you do not have ids."),
+    }),
   },
 
   // --- macros ---------------------------------------------------------------
@@ -243,17 +295,17 @@ export const AALTO_TOOLS = [
  *
  * `page` tools are dispatched into the content script on the active tab and
  * touch the DOM. `browser` tools run in the service worker against the
- * chrome.* APIs. `spoken` tools have no side effect at all - the agent has
- * already said the thing, and the dispatcher only acknowledges them.
+ * chrome.* APIs.
  *
- * The web demo keeps the same three-way split; only the executors differ.
+ * The web demo keeps the same split; only the executors differ.
  */
 export const TOOL_TARGET = {
-  answer: "spoken",
-  clarify: "spoken",
-
+  get_context: "browser",
   read_text: "page",
   highlight: "page",
+  scroll_page: "page",
+  go_to_section: "page",
+  find_on_page: "page",
   insert_text: "page",
   copy_to_clipboard: "page",
   fill_field: "page",
@@ -264,7 +316,6 @@ export const TOOL_TARGET = {
   search_web: "browser",
   switch_tab: "browser",
   close_tabs: "browser",
-  list_tabs: "browser",
   save_macro: "browser",
   run_macro: "browser",
   list_macros: "browser",

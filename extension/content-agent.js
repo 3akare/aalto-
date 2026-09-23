@@ -1,25 +1,16 @@
 /**
- * The agent's hands on the page.
+ * The agent's hands on the page - any page, not just Google Forms.
  *
- * This runs on every site, not just Google Forms as its predecessor did. The
- * matching half is unchanged and deliberately so - the containment-biased
- * similarity, the stopword list, the stem-prefix credit, the date parsing and
- * above all the option guard that refuses to pick the first radio when nothing
- * matches all came out of real debugging and none of it was ever specific to
- * one site.
- *
- * What did change is discovery. Google Forms hides its structure behind
- * role="listitem" and role="heading", so the old version read those directly.
- * An arbitrary page has no such convention, so fields are found by their actual
- * controls and a label is derived per control, trying each of the six ways a
- * page can name an input before giving up.
- *
- * Kept as a classic script rather than a module: chrome.scripting.executeScript
- * injects files, not module graphs, and on-demand injection is what keeps this
- * working in tabs that were already open when the extension reloaded.
+ * Fields are found by their actual controls, with a label derived per control
+ * from the six ways a page can name an input. A classic script rather than a
+ * module, because executeScript injects files, not module graphs.
  */
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "SNAPSHOT") {
+    sendResponse(snapshot());
+    return false;
+  }
   if (message.type !== "TOOL") return false;
   try {
     sendResponse(dispatch(message.name, message.args ?? {}));
@@ -36,10 +27,14 @@ function dispatch(name, args) {
       return readText(args.source);
     case "highlight":
       return highlight(args.quote);
+    case "scroll_page":
+      return { ok: true, detail: scrollPage(args.direction, args.amount) };
+    case "go_to_section":
+      return { ok: true, detail: goToSection(args.section) };
+    case "find_on_page":
+      return { ok: true, detail: findOnPage(args) };
     case "insert_text":
       return insertText(args.text, args.mode);
-    case "copy_to_clipboard":
-      return copyToClipboard(args.text);
     case "fill_field":
       return fillField(args.label, args.value);
     case "review_form":
@@ -54,13 +49,38 @@ function dispatch(name, args) {
 // --- reading ----------------------------------------------------------------
 
 const MAX_PAGE_CHARS = 6000;
+const FIELD_PREVIEW = 4000;
+const SELECTION_PREVIEW = 2000;
 
 /**
- * Text the agent can answer from.
- *
- * Capped because the whole point is one spoken sentence back, and a sprawling
- * page costs latency on every turn for context nobody will hear.
+ * What the user is working on, for get_context: the box they are in (or were
+ * last typing in) with its contents and any selection inside it, plus any text
+ * selected elsewhere on the page.
  */
+function snapshot() {
+  const el = focusedEditable();
+  let field = null;
+  if (el) {
+    const text = contentsOf(el);
+    field = {
+      label: labelFor(el).slice(0, 80),
+      current: editingHost(activeElementDeep()) === el,
+      text: text.slice(0, FIELD_PREVIEW),
+      length: text.length,
+      truncated: text.length > FIELD_PREVIEW,
+      selected: selectionIn(el)?.text.slice(0, SELECTION_PREVIEW) ?? "",
+    };
+  }
+  const pageSelection = String(window.getSelection() ?? "").trim();
+  return {
+    ok: true,
+    field,
+    selection: field?.selected ? "" : pageSelection.slice(0, SELECTION_PREVIEW),
+  };
+}
+
+/** Capped: the point is one spoken sentence back, and a sprawling page costs
+ *  latency on every turn for context nobody will hear. */
 function readText(source) {
   if (source === "selection") {
     const selected = String(window.getSelection() ?? "").trim();
@@ -82,13 +102,8 @@ function readText(source) {
 
 const HIGHLIGHT_CLASS = "aalto-highlight";
 
-/**
- * Show where an answer came from.
- *
- * Uses a CSS Highlight rather than wrapping the match in a <mark>: editing the
- * DOM of a page the extension does not own breaks React reconciliation, and on
- * a page with its own text selection logic it can lose the user's place.
- */
+/** A CSS Highlight rather than a <mark>: editing the DOM of a page we do not
+ *  own breaks React reconciliation and can lose the user's place. */
 function highlight(quote) {
   const needle = (quote ?? "").trim();
   if (!needle) return { ok: false, error: "no phrase to look for" };
@@ -128,43 +143,167 @@ function ensureHighlightStyle() {
 
 // --- writing ----------------------------------------------------------------
 
-function focusedEditable() {
-  const el = document.activeElement;
-  if (!el) return null;
-  if (el.isContentEditable) return el;
-  if (el.tagName === "TEXTAREA") return el;
-  if (el.tagName === "INPUT" && !/^(checkbox|radio|button|submit|file)$/i.test(el.type)) return el;
+/**
+ * The last box the user was typing in.
+ *
+ * Talking to the agent usually moves focus away from the page - to the side
+ * panel, to the shortcut, to the microphone button - so by the time "type this"
+ * arrives, nothing on the page is focused and "which box?" has no answer. The
+ * box they last clicked into is what they mean.
+ */
+let lastEditable = null;
+
+// Three signals rather than one: focus events do not always fire when the
+// window itself is not focused, but a press and a keystroke always land.
+for (const type of ["focusin", "pointerdown", "input"]) {
+  document.addEventListener(
+    type,
+    (event) => {
+      const el = editingHost(event.composedPath?.()[0] ?? event.target);
+      if (el) lastEditable = el;
+    },
+    true
+  );
+}
+
+const NOT_TEXT = /^(checkbox|radio|button|submit|reset|file|image|range|color|hidden)$/i;
+
+/** The editable element this node belongs to, or null. */
+function editingHost(node) {
+  if (node?.nodeType !== 1) return null;
+  if (node.tagName === "TEXTAREA") return node.disabled || node.readOnly ? null : node;
+  if (node.tagName === "INPUT") {
+    return NOT_TEXT.test(node.type) || node.disabled || node.readOnly ? null : node;
+  }
+  if (node.isContentEditable) {
+    let host = node;
+    while (host.parentElement?.isContentEditable) host = host.parentElement;
+    return host;
+  }
   return null;
+}
+
+function activeElementDeep() {
+  let el = document.activeElement;
+  // Web components keep their focused element behind a shadow root.
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
+function focusedEditable() {
+  return editingHost(activeElementDeep()) ?? (lastEditable?.isConnected ? lastEditable : null);
+}
+
+/**
+ * What is selected inside a box, with enough to put the selection back.
+ * Captured before focusing, because focusing can move the caret.
+ */
+function selectionIn(el) {
+  if (!el.isContentEditable) {
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    return end > start ? { start, end, text: el.value.slice(start, end) } : null;
+  }
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.commonAncestorContainer)) return null;
+  return { range: range.cloneRange(), text: selection.toString() };
+}
+
+function restoreSelection(el, saved) {
+  if (!el.isContentEditable) return el.setSelectionRange(saved.start, saved.end);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(saved.range);
 }
 
 function contentsOf(el) {
   return el.isContentEditable ? el.innerText.trim() : el.value;
 }
 
+function selectAllIn(el) {
+  if (!el.isContentEditable) return el.select();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function caretToEnd(el) {
+  if (!el.isContentEditable) {
+    try {
+      el.setSelectionRange(el.value.length, el.value.length);
+    } catch {
+      // email and number inputs do not support selection; typing appends anyway.
+    }
+    return;
+  }
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
 function insertText(text, mode = "append") {
   const el = focusedEditable();
   if (!el) {
-    return { ok: false, error: "they need to click into a text box first - nothing is focused" };
+    return { ok: false, error: "click into the box you want me to type in, then ask again." };
   }
 
+  const saved = selectionIn(el);
+  el.focus({ preventScroll: true });
   const existing = contentsOf(el);
-  // A space between sentences, but not a leading one into an empty box.
-  const next = mode === "replace" || !existing ? text : `${existing} ${text}`;
 
+  // Replacing "the selection" with nothing selected means the whole box: that
+  // is what someone saying "summarize this" from inside it means.
+  const scope = mode === "replace_selection" && !saved ? "replace" : mode;
+  if (scope === "replace") selectAllIn(el);
+  else if (scope === "replace_selection") restoreSelection(el, saved);
+  else caretToEnd(el);
+
+  // A space between sentences, but not a leading one into an empty box.
+  const addition = scope === "append" && existing && !/\s$/.test(existing) ? ` ${text}` : text;
+
+  // Through the editor's own input path, as if typed. Gmail, Slack, Notion and
+  // any React form keep their own model of the text and ignore an assigned
+  // value; insertText goes through it, and lands on the undo stack too.
+  const typed = document.execCommand("insertText", false, addition);
+
+  if (!typed || contentsOf(el) === existing)
+    writeDirectly(el, scope, text, addition, saved, existing);
+
+  const detail =
+    scope === "replace"
+      ? "replaced the text in the box"
+      : scope === "replace_selection"
+        ? "replaced the selected text"
+        : "typed it in";
+  return { ok: true, detail };
+}
+
+/** For editors that refuse insertText: set the result outright instead. */
+function writeDirectly(el, scope, text, addition, saved, existing) {
+  if (scope === "replace_selection" && saved) {
+    if (el.isContentEditable) {
+      saved.range.deleteContents();
+      saved.range.insertNode(document.createTextNode(text));
+      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    } else {
+      setNativeValue(el, el.value.slice(0, saved.start) + text + el.value.slice(saved.end));
+    }
+    return;
+  }
+  const next = scope === "replace" ? text : `${existing}${addition}`;
   if (el.isContentEditable) {
     el.textContent = next;
     el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   } else {
     setNativeValue(el, next);
   }
-  return { ok: true, detail: mode === "replace" ? "rewrote it" : "typed it in" };
-}
-
-function copyToClipboard(text) {
-  // Fire and forget: the clipboard promise resolves after this handler has
-  // already replied, and a failure here is not worth holding the agent up for.
-  navigator.clipboard?.writeText(text).catch(() => {});
-  return { ok: true, detail: "copied it to their clipboard" };
 }
 
 // --- matching ---------------------------------------------------------------
@@ -225,12 +364,10 @@ function tokenise(text) {
 }
 
 /**
- * Containment-biased token overlap.
- *
- * Dividing by the LARGER token set meant a spoken "name" against "What is your
- * full legal name?" scored 0.17 and fell under the threshold - short spoken
- * labels failed against verbose questions as a rule. Dividing by the smaller
- * set asks the right question: is what they said contained in this question?
+ * Containment-biased token overlap. Dividing by the LARGER set meant a spoken
+ * "name" against "What is your full legal name?" scored 0.17 and missed - short
+ * labels failed against verbose questions as a rule. The smaller set asks the
+ * right question: is what they said contained in this one?
  */
 function similarity(spoken, questionText) {
   const a = new Set(tokenise(spoken));
@@ -261,19 +398,14 @@ function similarity(spoken, questionText) {
 /** How close a spoken label must be to count as naming a field. */
 const FIELD_THRESHOLD = 0.34;
 
-/** How close a spoken value must be to count as naming an option. Higher on
- *  purpose: naming the wrong field wastes a turn, picking the wrong option puts
- *  a wrong answer into a form. */
+/** Higher than the field threshold on purpose: naming the wrong field wastes a
+ *  turn, picking the wrong option puts a wrong answer into a form. */
 const OPTION_THRESHOLD = 0.5;
 
 /**
- * Pick the option whose text best matches the spoken value, or null if none is
- * close enough.
- *
- * Returning null rather than a best guess is the entire safety property. An
- * earlier version fell back to the first option when nothing matched, which put
- * a wrong answer into a form nobody had agreed to and reported failure at the
- * same time - invisible until it was submitted.
+ * Best match, or null if nothing is close enough. Returning null rather than a
+ * guess is the entire safety property: an earlier version fell back to the
+ * first option, putting a wrong answer into a form nobody had agreed to.
  */
 function bestOption(options, value) {
   const scored = options
@@ -296,17 +428,303 @@ function toIsoDate(value) {
   const parsed = Date.parse(trimmed);
   if (Number.isNaN(parsed)) return null;
 
-  // Built from the LOCAL parts, not toISOString(). Date.parse("12 April 1990")
-  // gives local midnight; converting that to UTC moves it back a day for anyone
-  // east of Greenwich, so a spoken date of birth was landing on the day before
-  // it was said.
+  // Local parts, not toISOString(): local midnight converted to UTC moves back
+  // a day for anyone east of Greenwich.
   const d = new Date(parsed);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 // AALTO:MATCHING-END
 
-/** React-controlled inputs ignore plain `.value =` assignment; dispatch real events too. */
+// --- moving around the page -----------------------------------------------------
+
+// Spliced from shared/page-nav.js by `npm run sync-shared`, like the block above.
+// Edit shared/page-nav.js, not this.
+// AALTO:PAGENAV-START
+const SECTION_THRESHOLD = 0.5;
+const MAX_MATCHES = 200;
+const STEP = { small: 0.35, page: 0.85, large: 2.5 };
+
+// --- scrolling --------------------------------------------------------------
+
+/**
+ * The element that actually scrolls. Most apps - Gmail, Slack, Notion, docs
+ * sites - scroll an inner panel, not the window, so scrolling the window does
+ * nothing there. Whatever panel sits under the middle of the screen is what
+ * the user means by "the page".
+ */
+function scroller(scope) {
+  if (scope) return scope;
+  let el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+  while (el && el !== document.body && el !== document.documentElement) {
+    const { overflowY } = getComputedStyle(el);
+    if (/(auto|scroll|overlay)/.test(overflowY) && el.scrollHeight > el.clientHeight + 4) return el;
+    el = el.parentElement;
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
+function scrollPage(direction, amount = "page", scope = null) {
+  const el = scroller(scope);
+  const isWindow = el === document.scrollingElement || el === document.documentElement;
+  const view = isWindow ? window.innerHeight : el.clientHeight;
+  const max = Math.max(0, el.scrollHeight - view);
+  const step = (STEP[amount] ?? STEP.page) * view;
+
+  let target = el.scrollTop;
+  if (direction === "top") target = 0;
+  else if (direction === "bottom") target = max;
+  else if (direction === "up") target = Math.max(0, el.scrollTop - step);
+  else target = Math.min(max, el.scrollTop + step);
+
+  if (max === 0) return "this page doesn't scroll - it all fits on screen";
+  if (Math.abs(target - el.scrollTop) < 2) {
+    return target === 0 ? "already at the top of the page" : "already at the bottom of the page";
+  }
+
+  el.scrollTo({ top: target, behavior: "smooth" });
+  if (target === 0) return "at the top of the page";
+  if (target >= max - 2) return "at the bottom of the page";
+  // Reported so the agent knows when there is no more to scroll to.
+  return `scrolled ${direction} - now about ${Math.round((target / max) * 100)}% of the way down the page`;
+}
+
+// --- sections ---------------------------------------------------------------
+
+const HEADINGS = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
+
+const visible = (el) => (el.checkVisibility ? el.checkVisibility() : el.offsetParent !== null);
+const clean = (text) => (text ?? "").replace(/\s+/g, " ").trim();
+
+function goToSection(section, root = document.body, container = null) {
+  const headings = Array.from(root.querySelectorAll(HEADINGS))
+    .filter(visible)
+    .map((el) => ({ el, text: clean(el.textContent) }))
+    .filter((h) => h.text && h.text.length < 160);
+
+  let best = null;
+  for (const h of headings) {
+    const score = similarity(section, h.text);
+    if (score > (best?.score ?? 0)) best = { ...h, score };
+  }
+
+  // Pages without proper headings often still anchor their sections by id:
+  // #pricing, #faq, #get-started.
+  if (!best || best.score < SECTION_THRESHOLD) {
+    for (const el of root.querySelectorAll("[id]")) {
+      if (!visible(el)) continue;
+      const score = similarity(section, el.id.replace(/[-_]+/g, " "));
+      if (score > (best?.score ?? 0)) best = { el, text: el.id.replace(/[-_]+/g, " "), score };
+    }
+  }
+
+  if (!best || best.score < SECTION_THRESHOLD) {
+    const names = headings.slice(0, 15).map((h) => h.text);
+    return names.length
+      ? `no section matches "${section}". The sections on this page are: ${names.join("; ")}.`
+      : `no section matches "${section}", and this page has no headings to jump between. Try find_on_page instead.`;
+  }
+
+  bringIntoView(best.el, container, "start");
+  mark("aalto-section", [rangeOver(best.el)]);
+  return `jumped to the "${best.text}" section`;
+}
+
+// --- finding ----------------------------------------------------------------
+
+let found = null; // { root, container, query, ranges, snippets, index }
+
+/**
+ * Find words on the page, like Ctrl+F.
+ *
+ * The page text is flattened into one string first, with a map back to the
+ * text node and offset each character came from. Searching node by node
+ * misses any phrase that crosses formatting - "refund <b>policy</b>" is two
+ * text nodes - and those are exactly the phrases people ask about.
+ */
+function findOnPage({ query, step } = {}, root = document.body, container = null) {
+  if (!query && step) {
+    if (!found || found.root !== root || found.ranges.length === 0) {
+      return "there's no search to step through - say what to look for.";
+    }
+    const n = found.ranges.length;
+    found.index = (found.index + (step === "previous" ? n - 1 : 1)) % n;
+    show(found);
+    return `match ${found.index + 1} of ${n} for "${found.query}": "${found.snippets[found.index]}"`;
+  }
+
+  const wanted = clean(query).toLowerCase();
+  if (!wanted) return "say what to look for.";
+
+  const { text, lower, nodes, nodeAt, offsetAt, breaks } = flatten(root);
+  const ranges = [];
+  const snippets = [];
+  for (
+    let at = lower.indexOf(wanted);
+    at !== -1 && ranges.length < MAX_MATCHES;
+    at = lower.indexOf(wanted, at + wanted.length)
+  ) {
+    const end = at + wanted.length - 1;
+    const range = document.createRange();
+    range.setStart(nodes[nodeAt[at]], offsetAt[at]);
+    range.setEnd(nodes[nodeAt[end]], offsetAt[end] + 1);
+    ranges.push(range);
+    // The paragraph the match sits in - not a fixed window, which ran into the
+    // paragraph before and gave the agent a muddled sentence to answer from.
+    const blockStart = breaks.findLast((b) => b <= at) ?? 0;
+    const blockEnd = breaks.find((b) => b > end) ?? text.length;
+    snippets.push(excerpt(text, at, end, blockStart, blockEnd));
+  }
+
+  found = { root, container, query: clean(query), ranges, snippets, index: 0 };
+  if (ranges.length === 0) {
+    mark("aalto-find", []);
+    mark("aalto-find-current", []);
+    return `"${clean(query)}" isn't on this page.`;
+  }
+
+  show(found);
+  const listed = snippets
+    .slice(0, 3)
+    .map((s, i) => `${i + 1}. "${s}"`)
+    .join("\n");
+  const more = ranges.length > 3 ? `\n...and ${ranges.length - 3} more.` : "";
+  return `found ${ranges.length} match${ranges.length === 1 ? "" : "es"} for "${found.query}" - showing the first, highlighted:\n${listed}${more}`;
+}
+
+/**
+ * The sentence around a match, cut at sentence or word boundaries and kept
+ * inside its own paragraph. A fixed character window started mid-word and ran
+ * into the paragraph before, which gave the agent a muddled sentence to answer
+ * from.
+ */
+function excerpt(text, at, end, blockStart, blockEnd) {
+  let from = Math.max(blockStart, at - 140);
+  if (from > blockStart) {
+    const sentence = text.lastIndexOf(". ", at);
+    const space = text.indexOf(" ", from);
+    if (sentence >= from) from = sentence + 2;
+    else if (space !== -1 && space < at) from = space + 1;
+  }
+  let to = Math.min(blockEnd, end + 141);
+  if (to < blockEnd) {
+    const stop = text.indexOf(". ", end);
+    const space = text.lastIndexOf(" ", to);
+    if (stop !== -1 && stop < to) to = stop + 1;
+    else if (space > end) to = space;
+  }
+  const lead = from > blockStart && text[from - 2] !== "." ? "..." : "";
+  const tail = to < blockEnd && text[to - 1] !== "." ? "..." : "";
+  return `${lead}${text.slice(from, to).trim()}${tail}`;
+}
+
+function show(state) {
+  mark("aalto-find", state.ranges);
+  mark("aalto-find-current", [state.ranges[state.index]]);
+  const node = state.ranges[state.index].startContainer;
+  bringIntoView(node.nodeType === 1 ? node : node.parentElement, state.container, "center");
+}
+
+/**
+ * Scroll an element into view - within one panel when told which, so a page
+ * embedded in another page does not drag its host along. Left alone,
+ * scrollIntoView scrolls every scrolling ancestor, including the window.
+ */
+function bringIntoView(el, container, block) {
+  if (!el) return;
+  if (!container) {
+    el.scrollIntoView({ behavior: "smooth", block });
+    return;
+  }
+  const offset = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+  const top =
+    block === "center"
+      ? container.scrollTop + offset - container.clientHeight / 2 + el.offsetHeight / 2
+      : container.scrollTop + offset - 12;
+  container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+const SKIP = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "TEXTAREA", "INPUT", "SELECT"]);
+
+/** One searchable string for the whole root, whitespace collapsed, mapped back to the DOM. */
+function flatten(root) {
+  const nodes = [];
+  let text = "";
+  const nodeAt = [];
+  const offsetAt = [];
+  const breaks = [0]; // where each block's text begins
+  let lastBlock = null;
+  let spaced = true;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      const parent = n.parentElement;
+      if (!parent || SKIP.has(parent.tagName) || !n.data.trim()) return NodeFilter.FILTER_REJECT;
+      return visible(parent) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const k = nodes.push(n) - 1;
+    const block = n.parentElement.closest(
+      "p, li, td, th, h1, h2, h3, h4, h5, h6, div, section, article, blockquote, pre"
+    );
+    // Separate blocks, so the end of one paragraph cannot run into the next.
+    if (block !== lastBlock) {
+      if (!spaced) {
+        text += " ";
+        nodeAt.push(k);
+        offsetAt.push(0);
+        spaced = true;
+      }
+      breaks.push(text.length);
+    }
+    lastBlock = block;
+    for (let i = 0; i < n.data.length; i++) {
+      const isSpace = /\s/.test(n.data[i]);
+      if (isSpace && spaced) continue;
+      text += isSpace ? " " : n.data[i];
+      nodeAt.push(k);
+      offsetAt.push(i);
+      spaced = isSpace;
+    }
+  }
+  breaks.push(text.length);
+  return { text, lower: text.toLowerCase(), nodes, nodeAt, offsetAt, breaks };
+}
+
+// --- marking ----------------------------------------------------------------
+
+const MARK_STYLES = `
+  ::highlight(aalto-find) { background: rgba(245, 217, 168, 0.75); color: inherit; }
+  ::highlight(aalto-find-current) { background: #f0a36b; color: #1a1915; }
+  ::highlight(aalto-section) { background: rgba(240, 163, 107, 0.35); }
+`;
+
+/**
+ * CSS Highlights rather than wrapping matches in <mark>: editing the DOM of a
+ * page we do not own breaks React reconciliation and can lose the user's place.
+ */
+function mark(name, ranges) {
+  if (typeof Highlight !== "function" || !CSS.highlights) return;
+  if (!document.getElementById("aalto-mark-styles")) {
+    const style = document.createElement("style");
+    style.id = "aalto-mark-styles";
+    style.textContent = MARK_STYLES;
+    document.head.append(style);
+  }
+  if (ranges.length === 0) CSS.highlights.delete(name);
+  else CSS.highlights.set(name, new Highlight(...ranges));
+}
+
+function rangeOver(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  return range;
+}
+// AALTO:PAGENAV-END
+
+/** React-controlled inputs ignore plain `.value =`; dispatch real events too. */
 function setNativeValue(element, value) {
   const proto =
     element.tagName === "TEXTAREA"
@@ -332,14 +750,7 @@ function textOf(el) {
   return (el?.innerText ?? el?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
-/**
- * Work out what a control is called.
- *
- * Six strategies in descending order of how much the page meant them. Google
- * Forms lands on the role="listitem" branch, which is the whole of what the
- * previous version knew how to do; an ordinary page usually lands on one of
- * the first three.
- */
+/** Six strategies, in descending order of how much the page meant them. */
 function labelFor(el) {
   const by = el.getAttribute?.("aria-labelledby");
   if (by) {
@@ -387,13 +798,8 @@ function groupKey(el) {
   return el;
 }
 
-/**
- * Every field on the page, each able to read and write itself.
- *
- * Returning behaviour rather than elements is what lets fill, review and the
- * read-back share one notion of what a field is - the alternative is three
- * near-identical switch statements that drift apart.
- */
+/** Returning behaviour rather than elements lets fill, review and read-back
+ *  share one notion of what a field is. */
 function collectFields() {
   const controls = Array.from(
     document.querySelectorAll(
@@ -476,9 +882,8 @@ function makeField({ label, kind, els }) {
       }
       if (primary.tagName === "SELECT") {
         const chosen = primary.selectedOptions[0];
-        // A select's first option is usually a "Choose..." placeholder, and
-        // reading that back as an answer would tell the user they had filled
-        // in something they had not.
+        // The first option is usually a "Choose..." placeholder; reading it
+        // back would claim they had filled in something they had not.
         return chosen && primary.selectedIndex > 0 ? chosen.text.trim() : "";
       }
       if (primary.isContentEditable) return primary.innerText.trim();
@@ -491,10 +896,8 @@ function makeField({ label, kind, els }) {
       if (kind === "choice") {
         const options = optionsOf(els);
         const match = bestOption(options, value);
-        // This refusal is the point. The previous behaviour selected the first
-        // option when nothing matched and then reported failure, which put a
-        // wrong answer into a form nobody had agreed to - worse than doing
-        // nothing, and invisible until it was submitted.
+        // The refusal is the point: selecting the first option on no match
+        // puts a wrong answer into a form nobody agreed to, invisibly.
         if (!match) {
           return {
             ok: false,
@@ -552,7 +955,7 @@ function makeField({ label, kind, els }) {
           return { ok: true, detail: `chose "${match.text}" for "${label}"` };
         }
 
-        // An ARIA listbox has to be opened before its options exist in the DOM.
+        // An ARIA listbox must be opened before its options exist.
         primary.click();
         const options = optionsOf(
           Array.from(document.querySelectorAll('[role="option"]')).filter(isVisible)
@@ -605,13 +1008,8 @@ function fillField(spokenLabel, value) {
   return scored[0].field.write(value);
 }
 
-/**
- * Read the whole form back.
- *
- * Phrased for the ear rather than the screen: someone checking a form by
- * listening needs to hear "blank" said out loud, because silence where an
- * answer should be sounds exactly like the sentence having ended.
- */
+/** Phrased for the ear: "blank" has to be said out loud, because silence where
+ *  an answer should be sounds like the sentence having ended. */
 function reviewForm() {
   const fields = collectFields();
   if (fields.length === 0) return { ok: false, error: "there's no form on this page to read back" };

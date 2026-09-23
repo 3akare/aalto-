@@ -27,7 +27,7 @@ not say. Both of those are code, not prompt instructions.
 
 ```
 Chrome extension (MV3)
-  popup.js          a view; the session outlives it
+  sidepanel.js      the panel; stays open across tabs, the session outlives it
   background.js     tool dispatch, the browser, the safety guards
   offscreen.js      microphone, speaker, and the socket
   content-agent.js  the DOM of whatever page you are on

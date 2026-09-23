@@ -1,19 +1,13 @@
 /**
- * Captures microphone PCM and resamples it to what the Voice Agent API wants.
+ * Captures microphone PCM, resamples to 24 kHz, and hands up whole frames.
  *
- * Runs on the audio thread. It does two things and nothing else: resample to
- * 24 kHz, and hand up whole frames rather than 128-sample render quanta.
+ * Resampling here rather than forcing `new AudioContext({sampleRate: 24000})`
+ * is the portable choice: Firefox quietly drops echo cancellation when the
+ * context rate does not match the device, and Safari garbles audio outright.
+ * Echo cancellation is what stops the agent interrupting its own voice.
  *
- * Resampling here rather than by forcing `new AudioContext({sampleRate: 24000})`
- * is the portable choice. Chrome tolerates a forced rate, but Firefox quietly
- * drops echo cancellation when the context rate does not match the device, and
- * Safari garbles audio outright. Taking the device's native rate and converting
- * ourselves works everywhere, and echo cancellation is what stops the agent
- * hearing its own voice and interrupting itself.
- *
- * Framing happens here too: posting every quantum means ~190 messages a second,
- * which is enough to stall the receiving thread. A frame of 2048 samples is
- * about 85 ms - small enough that turn detection still feels immediate.
+ * Framing is here too - a message per 128-sample quantum is ~190 a second,
+ * enough to stall the receiving thread. 2048 samples is about 85 ms.
  */
 
 const TARGET_RATE = 24000;
@@ -22,7 +16,7 @@ const FRAME_SAMPLES = 2048;
 class PcmCapture extends AudioWorkletProcessor {
   constructor() {
     super();
-    // `sampleRate` is a global in the worklet scope: the context's real rate.
+    // `sampleRate` is a worklet global: the context's real rate.
     this.ratio = sampleRate / TARGET_RATE;
     this.readPos = 0; // fractional, carried across quanta so no click at the seam
     this.tail = new Float32Array(0); // samples the last quantum could not consume
@@ -36,8 +30,7 @@ class PcmCapture extends AudioWorkletProcessor {
     // zeros; returning true keeps the node alive for when audio resumes.
     if (!channel || channel.length === 0) return true;
 
-    // Join what is left over from last time so interpolation can look across
-    // the boundary instead of restarting at every quantum.
+    // Join the leftover so interpolation looks across the quantum boundary.
     const buffer = new Float32Array(this.tail.length + channel.length);
     buffer.set(this.tail, 0);
     buffer.set(channel, this.tail.length);
@@ -52,8 +45,7 @@ class PcmCapture extends AudioWorkletProcessor {
       this.frame[this.filled++] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
 
       if (this.filled === FRAME_SAMPLES) {
-        // Transferred rather than copied: this runs on the audio thread and the
-        // frame is no use to us once it is gone.
+        // Transferred, not copied: this is the audio thread.
         const out = this.frame;
         this.port.postMessage(out, [out.buffer]);
         this.frame = new Int16Array(FRAME_SAMPLES);

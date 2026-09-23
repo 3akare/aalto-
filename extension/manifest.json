@@ -4,22 +4,32 @@
   "version": "1.0.0",
   "description": "Talk to your browser. Aalto reads the page, fills forms, writes your text and drives your tabs - and never submits anything it hasn't read back to you.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt1q9+DIDIFWo1ugVAvLhZGq1KubcJ/Sx8gHLKBGeY8B+HyTAnaXsT8LjVHM7DTolV6Lv25Yk98om11cjfNVqPANf8YbTGuQAz70jjwJqYHGvK0lfxGc5sfGWCU3h6f774Q4iLqwsVwnDOoUywaAi8nEJvoZkFseD0GGPwjvz2bZeLUSz9ldQoGfzKLvHByp5gR/ht0RUd0KcgVZLALeWrGic7xf69fG8cP+DpiUv3ofpri2XBdzTACdeTsV3ftFjCDapR0H4Ria6EaoTlAJOiEDfDgozUEnZa+FQNvsrlTqqQdWDQrk0xdxgdZbQ+AGfXL2z2JnWOM8CMbTxp24rFwIDAQAB",
-  "permissions": ["tabs", "activeTab", "scripting", "storage", "offscreen", "clipboardWrite"],
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage",
+    "offscreen",
+    "clipboardWrite",
+    "sidePanel"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Aalto"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "commands": {
     "start-listening": {
       "suggested_key": {
         "default": "Alt+A"
       },
-      "description": "Start or end a conversation with Aalto"
+      "description": "Start or stop talking to Aalto"
     }
   },
   "content_scripts": [

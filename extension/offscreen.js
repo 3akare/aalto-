@@ -1,19 +1,12 @@
 /**
- * Offscreen worker: owns the microphone, the speaker, and the session socket.
+ * Owns the microphone, the speaker, and the session socket.
  *
- * It lives outside the popup because the popup is destroyed as soon as it loses
- * focus - the instant Aalto opens or switches a tab. It is not the background
- * worker because a service worker has no DOM, so no getUserMedia and no Web
- * Audio, and because Chrome tears an idle service worker down after thirty
- * seconds, which would kill the socket in the middle of a conversation.
+ * Not the popup, which is destroyed the instant Aalto opens or switches a tab.
+ * Not the service worker, which has no Web Audio and is torn down while idle -
+ * which a live voice session never is.
  *
- * What it does NOT do any more is decide when the user has stopped talking.
- * The previous version carried a voice-activity detector - an RMS threshold, a
- * silence hold, a lead-in grace period, a maximum utterance length and a commit
- * handshake - to cut each command into a one-shot request. AssemblyAI's Voice
- * Agent API does turn detection itself, on a continuously open session, so all
- * of that is gone. The microphone simply stays open and the agent works out
- * whose turn it is.
+ * It does not decide when the user has stopped talking: AssemblyAI does turn
+ * detection on a continuously open session, so the microphone simply stays open.
  */
 
 import { AgentSession } from "./shared/agent-session.js";
@@ -47,9 +40,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
 
-    case "SEND_TEXT":
-      session?.sendText(message.text);
-      sendResponse({ ok: true });
+    case "COPY":
+      sendResponse(copy(message.text));
       return false;
 
     default:
@@ -58,17 +50,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 async function start(config) {
-  if (session) throw new Error("a session is already running");
+  if (session) throw new Error("a session is already running.");
 
-  // Held open across sessions so starting again does not re-prompt or
-  // re-negotiate the device, which adds a noticeable delay before the first
-  // syllable lands.
+  // Held open across sessions: re-negotiating the device costs a noticeable
+  // delay before the first syllable lands.
   if (!media) {
     media = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // Without this the agent hears its own voice coming out of the speakers
-        // and interrupts itself. It is what makes the demo work without headphones.
+        // Without this the agent hears itself and interrupts its own sentence.
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
@@ -76,8 +66,7 @@ async function start(config) {
     });
   }
 
-  // Deliberately the device's own rate rather than a forced 24 kHz: see the
-  // note in shared/pcm-worklet.js, which does the conversion instead.
+  // The device's own rate; the worklet converts. See shared/pcm-worklet.js.
   if (!audioCtx) {
     audioCtx = new AudioContext();
     await audioCtx.audioWorklet.addModule("shared/pcm-worklet.js");
@@ -89,8 +78,16 @@ async function start(config) {
   session = new AgentSession({
     token: config.token,
     tools: config.tools,
+    greeting: config.greeting,
+    context: config.context,
     runTool,
-    onEvent: relay,
+    onEvent: (event) => {
+      relay(event);
+      // A dropped socket - including a session reaching its time limit - has
+      // to release the microphone and clear the slot, or the next start is
+      // refused because a session is "already running".
+      if (event.type === "session.dropped") stop();
+    },
     onAudio: (pcm) => speaker.push(pcm),
     onInterrupt: () => speaker.stop(),
   });
@@ -129,17 +126,12 @@ function onFrame(frame) {
     .catch(() => {});
 }
 
-/**
- * Hand a tool call to the service worker, which owns the browser.
- *
- * Everything the agent can actually do - tabs, the DOM of the active page,
- * saved macros - needs chrome.* APIs this document does not have. The socket
- * lives here because the microphone does; the acting lives there.
- */
+/** The socket lives here because the microphone does; the acting happens in
+ *  the service worker, which has the chrome.* APIs. */
 async function runTool(name, args) {
   const response = await chrome.runtime.sendMessage({ type: "RUN_TOOL", name, args });
-  if (!response) throw new Error("the extension did not respond");
-  if (!response.ok) throw new Error(response.error ?? "that didn't work");
+  if (!response) throw new Error("the extension isn't responding. Try again.");
+  if (!response.ok) throw new Error(response.error ?? "that didn't work.");
   return response.result;
 }
 
@@ -160,8 +152,22 @@ async function stop() {
   speaker?.stop();
   speaker = null;
 
-  // Closing the socket without saying goodbye leaves the session billing
-  // through its grace window, so this is worth awaiting.
+  // Worth awaiting: see AgentSession.end().
   await session?.end().catch(() => {});
   session = null;
+}
+
+/**
+ * The page cannot do this: the clipboard API needs its document to have focus,
+ * and with the side panel open it rarely does. An offscreen document with the
+ * CLIPBOARD reason is Chrome's sanctioned route for a write nobody clicked.
+ */
+function copy(text) {
+  const area = document.createElement("textarea");
+  area.value = text ?? "";
+  document.body.append(area);
+  area.select();
+  const ok = document.execCommand("copy");
+  area.remove();
+  return ok ? { ok: true } : { ok: false, error: "the clipboard refused that copy." };
 }
