@@ -1,9 +1,7 @@
 /**
- * The demo, assembled.
- *
- * Boots the sandbox, checks what is left of today's budget, and - when someone
- * clicks - opens a session and connects the microphone to it. The session
- * itself is shared/agent-session.js, the same file the extension runs.
+ * Boots the sandbox, checks today's budget, and on a click opens a session and
+ * connects the microphone to it. The session is shared/agent-session.js - the
+ * same file the extension runs.
  */
 
 import { AgentSession } from "../vendor/shared/agent-session.js";
@@ -17,20 +15,16 @@ import { resetGuard, runTool } from "./tool-executor.js";
 const micBtn = document.getElementById("mic");
 const micLabel = document.getElementById("micLabel");
 const statusEl = document.getElementById("status");
-const meterFill = document.getElementById("meterFill");
 const chipsEl = document.getElementById("chips");
 
 /**
- * The tour, in order.
- *
  * Nobody knows what to say to a microphone, and a first turn that lands on
- * silence loses the demo in ten seconds. These four are sequenced to end on the
- * only part worth remembering: beat three asks it to submit, and it refuses and
- * reads the form back instead, because the guard is a conditional rather than a
- * line in the prompt. Beat four is the confirmation it was holding out for.
+ * silence loses the demo in ten seconds. Sequenced to end on the part worth
+ * remembering: beat three asks it to submit and it refuses, reading the form
+ * back instead. Beat four is the confirmation it was holding out for.
  */
 const SUGGESTIONS = [
-  "How long does registration take, according to this page?",
+  "Where does this page mention a penalty?",
   "Go to the form. My name is Dana Whitfield, I'm in retail trade, sole trader.",
   "Submit it.",
   "Fine - read it back first, then submit.",
@@ -38,9 +32,6 @@ const SUGGESTIONS = [
 
 /** Survives a reload, so a tab can hand back the lease it left behind. */
 const LEASE_KEY = "aalto.lease";
-
-/** Bigger than any session can be; the server clamps it to what it granted. */
-const CLAIM_ALL = 999_999;
 
 let session = null;
 let speaker = null;
@@ -58,8 +49,7 @@ refreshBudget();
 async function refreshBudget() {
   try {
     const res = await fetch("/api/demo/status");
-    const { remainingSeconds, dailyCapSeconds } = await res.json();
-    meterFill.style.width = `${Math.round((remainingSeconds / dailyCapSeconds) * 100)}%`;
+    const { remainingSeconds } = await res.json();
     if (remainingSeconds <= 0) {
       micBtn.disabled = true;
       setStatus(
@@ -68,8 +58,7 @@ async function refreshBudget() {
       );
     }
   } catch {
-    // A status call failing is not a reason to hide the button; the token
-    // request will give a better error if there really is a problem.
+    // Not a reason to hide the button; the token request gives a better error.
   }
 }
 
@@ -88,10 +77,8 @@ async function start() {
   inspector.clear();
   resetGuard();
 
-  // Hand back a lease this tab took earlier and never released - a reload, or a
-  // close the beacon did not survive. Without this the visitor is locked out by
-  // their own previous attempt, which is exactly when they are most likely to
-  // be pressing the button again.
+  // A reload, or a close the beacon did not survive, would otherwise lock the
+  // visitor out by their own previous attempt.
   reclaimStaleLease();
 
   let token;
@@ -133,21 +120,16 @@ async function start() {
     micBtn.disabled = false;
     setStatus("Listening. Interrupt it whenever you like.");
   } catch (err) {
-    // mic.js and agent-session.js both throw messages written to be read, so
-    // show what they said rather than second-guessing it here.
+    // Both throw messages written to be read; show what they said.
     console.error("[Aalto] session failed to start:", err);
     await end(err.message);
   }
 }
 
 /**
- * Say what actually went wrong.
- *
  * Every refusal used to fall through to "too many attempts", including a plain
- * server error - so a missing API key and a rate limit were indistinguishable
- * from the page, and the one message shown was the wrong one in both cases.
- * Keyed off the status as well as the reason, and anything unrecognised reports
- * itself rather than guessing.
+ * server error - so a missing key and a rate limit looked identical and the
+ * message was wrong in both cases. Anything unrecognised reports its status.
  */
 function refuse(status, reason) {
   micBtn.disabled = false;
@@ -174,7 +156,7 @@ function refuse(status, reason) {
   setStatus(`The server couldn't start a session (error ${status}).`, true);
 }
 
-/** Wrap the executor so every call shows up in the inspector as it happens. */
+/** Wrap the executor so every call shows up in the inspector. */
 async function instrumented(name, args) {
   const finish = inspector.beginCall(name, args);
   try {
@@ -182,8 +164,8 @@ async function instrumented(name, args) {
     finish("ok", result);
     return result;
   } catch (err) {
-    // A refusal is not a failure, and colouring it like one would misrepresent
-    // the most interesting thing the agent does.
+    // A refusal is not a failure, and colouring it like one misrepresents the
+    // most interesting thing the agent does.
     finish(
       /can't submit|doesn't match|isn't one of/.test(err.message) ? "refused" : "failed",
       err.message
@@ -225,20 +207,12 @@ async function end(message) {
   refreshBudget();
 }
 
-/**
- * Hand back what was not used.
- *
- * sendBeacon rather than fetch, because on pagehide the page is already going
- * and a fetch will not be given the chance to finish. Without this every
- * abandoned tab charges the budget a full session.
- */
+/** sendBeacon, not fetch: on pagehide the page is already going and a fetch
+ *  will not be given the chance to finish. */
 function releaseLease() {
   if (!lease) return;
-  const body = JSON.stringify({
-    leaseId: lease,
-    durationSeconds: Math.round((Date.now() - startedAt) / 1000),
-  });
-  navigator.sendBeacon("/api/demo/release", body);
+  // Just the id. The server times the session itself.
+  navigator.sendBeacon("/api/demo/release", JSON.stringify({ leaseId: lease }));
   sessionStorage.removeItem(LEASE_KEY);
   lease = null;
 }
@@ -248,14 +222,7 @@ function reclaimStaleLease() {
   const stale = sessionStorage.getItem(LEASE_KEY);
   if (!stale) return;
   sessionStorage.removeItem(LEASE_KEY);
-  // The point of this is to free the slot, not to win the seconds back. We
-  // cannot know how much of that session was used, and crediting back time that
-  // may well have been spent is the wrong way to be wrong - so claim all of it.
-  // The server clamps to whatever was actually granted.
-  navigator.sendBeacon(
-    "/api/demo/release",
-    JSON.stringify({ leaseId: stale, durationSeconds: CLAIM_ALL })
-  );
+  navigator.sendBeacon("/api/demo/release", JSON.stringify({ leaseId: stale }));
 }
 
 function startCountdown(maxSeconds) {
@@ -267,8 +234,8 @@ function startCountdown(maxSeconds) {
   }, 1000);
 }
 
-// Closing the tab without saying goodbye leaves the session billing through its
-// grace window, and leaves the lease held until it expires.
+// Otherwise the session bills through its grace window and the lease is held
+// until it expires.
 window.addEventListener("pagehide", () => {
   session?.end().catch(() => {});
   releaseLease();
@@ -289,8 +256,7 @@ function renderChips() {
     flash.className = "copied";
     chip.append(flash);
 
-    // Clicking copies rather than sends. This is a voice demo: the thing being
-    // demonstrated is that saying it out loud works, so a button that typed it
+    // Copies rather than sends: this is a voice demo, so a button that typed it
     // for you would be demonstrating the wrong thing.
     chip.addEventListener("click", async () => {
       await navigator.clipboard?.writeText(text).catch(() => {});

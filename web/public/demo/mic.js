@@ -1,17 +1,10 @@
-/**
- * Microphone capture for the demo.
- *
- * Deliberately thin: the worklet does the resampling and the framing, and the
- * session does the encoding, so all that is left here is asking for the device
- * and wiring it up.
- */
+/** Microphone capture. The worklet resamples and frames, the session encodes,
+ *  so all that is left here is asking for the device and wiring it up. */
 
 /**
- * What each refusal actually means, and what to do about it.
- *
- * The raw DOMException messages are terse to the point of useless - Chrome says
- * "Permission denied" whether the person clicked Block, the site is blocked at
- * the browser level, or an OS-level switch is off. Each has a different fix.
+ * The raw DOMException messages are useless - Chrome says "Permission denied"
+ * whether the person clicked Block, the site is blocked browser-wide, or an OS
+ * switch is off. Each has a different fix.
  */
 const MIC_ERRORS = {
   NotAllowedError:
@@ -33,13 +26,8 @@ export class Mic {
     this.source = null;
   }
 
-  /**
-   * Must be called from a click.
-   *
-   * An AudioContext created outside a user gesture starts suspended and never
-   * recovers, and that is also what stops a bot draining the day's budget by
-   * loading the page.
-   */
+  /** Must be called from a click: an AudioContext created outside a user
+   *  gesture starts suspended and never recovers. */
   async start() {
     this.stream = await this.#capture();
 
@@ -61,22 +49,12 @@ export class Mic {
     return this.ctx;
   }
 
-  /**
-   * Ask for the microphone, and say something useful when it says no.
-   *
-   * The raw DOMException messages are terse to the point of useless - Chrome
-   * says "Permission denied" whether the user clicked Block, the site is
-   * blocked at the browser level, or an OS-level switch is off. Each of these
-   * has a different fix and the person needs to be told which one.
-   */
   async #capture() {
     try {
       return await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          // Without this the agent hears itself through the speakers and
-          // interrupts its own sentence. It is what lets this be demonstrated in
-          // a room, without headphones.
+          // Without this the agent hears itself and interrupts its own sentence.
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,

@@ -1,22 +1,15 @@
 /**
- * Executing a tool call against the sandbox.
- *
- * This file, and sandbox.js beneath it, are the entirety of what differs from
- * the extension. Everything above - the tool definitions, the system prompt,
- * the protocol client and its result queue - is the shipped code, loaded from
- * the same shared/ directory. The contract the agent is programmed against is
- * identical; only the hands are different.
+ * This file and sandbox.js are the entirety of what differs from the extension.
+ * The tool definitions, system prompt and protocol client above are the shipped
+ * code, from the same shared/ directory - only the hands are different.
  */
 
 import { FIELD_THRESHOLD, similarity } from "../vendor/shared/matching.js";
+import { findOnPage, goToSection, scrollPage } from "../vendor/shared/page-nav.js";
 import * as sandbox from "./sandbox/sandbox.js";
 
-/**
- * The read-back guard, kept here rather than in the prompt.
- *
- * A prompt can be argued out of a rule. A conditional cannot, which is why a
- * judge can tell the agent to just submit it and watch it decline.
- */
+/** Kept here rather than in the prompt: a prompt can be argued out of a rule,
+ *  which is why a judge can tell it to just submit and watch it decline. */
 /**
  * Ordered by a counter rather than by Date.now(): several fills and a read-back
  * all land inside the same millisecond, which made "reviewed after filled" read
@@ -34,13 +27,18 @@ export function resetGuard() {
 
 export async function runTool(name, args) {
   switch (name) {
-    case "answer":
-      return args.text ?? "";
-
-    case "clarify":
-      return args.question ?? "";
-
     // --- reading ------------------------------------------------------------
+
+    case "get_context": {
+      const active = sandbox.activePage();
+      const lines = [`Active tab: ${sandbox.describePage(active)}`, "They are not in a text box."];
+      const others = sandbox.otherPages();
+      if (others.length) {
+        lines.push("Other open tabs, left to right:");
+        for (const p of others) lines.push(`- ${sandbox.describePage(p)}`);
+      }
+      return lines.join("\n");
+    }
 
     case "read_text": {
       if (args.source === "selection") {
@@ -49,8 +47,26 @@ export async function runTool(name, args) {
         return selected;
       }
       if (args.source === "field") throw new Error("nothing is focused in the demo");
+      if (args.tab_id != null) {
+        const page = sandbox.pageByNumber(args.tab_id);
+        if (!page)
+          throw new Error(`tab ${args.tab_id} isn't open. Call get_context to see what is.`);
+        return sandbox.readPage(page);
+      }
       return sandbox.readPage();
     }
+
+    // --- moving around the page ---------------------------------------------
+    // The same module the extension runs, pointed at the sandbox's viewport.
+
+    case "scroll_page":
+      return scrollPage(args.direction, args.amount, sandbox.viewportEl());
+
+    case "go_to_section":
+      return goToSection(args.section, sandbox.activePage().el, sandbox.viewportEl());
+
+    case "find_on_page":
+      return findOnPage(args, sandbox.activePage().el, sandbox.viewportEl());
 
     case "highlight":
       if (!sandbox.highlight(args.quote)) throw new Error("couldn't find that wording on the page");
@@ -81,8 +97,8 @@ export async function runTool(name, args) {
       sandbox.show("form");
       const spoken = sandbox
         .collectFields()
-        // "blank" said out loud, because silence where an answer should be
-        // sounds exactly like the sentence having ended.
+        // "blank" out loud: silence where an answer should be sounds exactly
+        // like the sentence having ended.
         .map((f) => `${f.label}: ${f.read() || "blank"}`)
         .join(". ");
       reviewedAt = ++clock;
@@ -104,9 +120,8 @@ export async function runTool(name, args) {
     // --- writing ------------------------------------------------------------
 
     case "insert_text":
-      // The sandbox has no free-text surface other than the form, and putting
-      // dictation into a form field without being asked would be worse than
-      // saying so.
+      // No free-text surface here but the form, and putting dictation into a
+      // form field unasked would be worse than saying so.
       throw new Error(
         "there's no text box focused in this demo - in the extension this types " +
           "into whatever box they're in on any site"
@@ -119,14 +134,13 @@ export async function runTool(name, args) {
     // --- tabs ---------------------------------------------------------------
 
     case "switch_tab": {
-      const tab = sandbox.findTab(args.description);
-      if (!tab) throw new Error(`nothing open matches "${args.description}"`);
+      const tab =
+        args.tab_id != null ? sandbox.pageByNumber(args.tab_id) : sandbox.findTab(args.description);
+      if (!tab)
+        throw new Error("nothing open matches that. Call get_context for the tabs and their ids.");
       sandbox.show(tab.id);
-      return `switched to ${tab.title}`;
+      return `switched to ${sandbox.describePage(tab)}`;
     }
-
-    case "list_tabs":
-      return `open tabs: ${sandbox.listTabs().join("; ")}`;
 
     case "open_url":
       sandbox.noteOpened(args.url);
@@ -134,7 +148,7 @@ export async function runTool(name, args) {
 
     case "search_web":
       sandbox.noteOpened(`search: ${args.query}`);
-      return `searched for "${args.query}" in a tab behind this one. (Simulated in the demo.)`;
+      return `searched for "${args.query}" in a tab behind this one. This demo cannot reach the live web, so there are no results to read - say so. The installed extension reads the real results and answers from them.`;
 
     case "close_tabs": {
       const closed = sandbox.closeOpened(args.description);

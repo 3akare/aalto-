@@ -18,8 +18,11 @@ const viewport = document.getElementById("viewport");
 const tabstrip = document.getElementById("tabstrip");
 const address = document.getElementById("address");
 
-const pages = Array.from(viewport.querySelectorAll("[data-page]")).map((el) => ({
+const pages = Array.from(viewport.querySelectorAll("[data-page]")).map((el, i) => ({
   id: el.dataset.page,
+  // Numeric like a real tab id, so the agent can address sandbox tabs exactly
+  // as it addresses the extension's.
+  num: i + 1,
   title: el.dataset.title,
   url: el.dataset.url,
   el,
@@ -53,12 +56,24 @@ export function show(id) {
   return true;
 }
 
+export function viewportEl() {
+  return viewport;
+}
+
 export function activePage() {
   return pages.find((p) => p.id === activeId);
 }
 
-export function listTabs() {
-  return pages.map((p) => p.title);
+export function pageByNumber(num) {
+  return pages.find((p) => p.num === num) ?? null;
+}
+
+export function describePage(p) {
+  return `[tab ${p.num}] "${p.title}" (${new URL(p.url).hostname})`;
+}
+
+export function otherPages() {
+  return pages.filter((p) => p.id !== activeId);
 }
 
 /**
@@ -102,9 +117,13 @@ export function closeOpened(description) {
 
 // --- the page's text --------------------------------------------------------
 
-export function readPage() {
-  const page = activePage();
-  return `${page.title}\n\n${page.el.innerText.replace(/\n{3,}/g, "\n\n").trim()}`;
+export function readPage(page = activePage()) {
+  // textContent, not innerText: a hidden tab has no rendered text to measure.
+  const text = page.el.textContent
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+  return `${page.title}\n\n${text}`;
 }
 
 export function highlight(quote) {

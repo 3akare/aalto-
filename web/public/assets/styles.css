@@ -844,21 +844,6 @@ section {
   color: var(--ask);
 }
 
-.meter {
-  width: 190px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--line-strong);
-  overflow: hidden;
-}
-
-.meter span {
-  display: block;
-  height: 100%;
-  background: var(--coral);
-  transition: width 0.4s var(--ease);
-}
-
 .premise {
   max-width: 640px;
   margin: 0 0 22px;
@@ -870,48 +855,197 @@ section {
 
 /* --- capabilities --------------------------------------------------------- */
 
-/*
- * Six columns, not "as many as fit". Seven cards never divide evenly into three
- * or four, so an auto-fit grid always ends on a gap. Mixed spans lay them out
- * two, three, two - flush on every row, and the varied widths read as
- * deliberate rather than as leftovers.
- */
+/* Six groups, three across: every row fills at every width that shows more
+   than one column. Each card plays a short exchange - something you could say,
+   then what Aalto did about it - instead of listing features. */
 .caps {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
 }
 
 .cap {
-  grid-column: span 2;
-  background: var(--card);
-  padding: 26px 24px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(204, 120, 92, 0.13), transparent 55%), var(--card);
+  overflow: hidden;
+  transition:
+    transform 0.35s var(--ease),
+    border-color 0.35s var(--ease);
 }
 
-.cap.wide {
-  grid-column: span 3;
+.cap:hover {
+  transform: translateY(-3px);
+  border-color: rgba(204, 120, 92, 0.45);
+}
+
+.cap header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cap-n {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--coral);
 }
 
 .cap h3 {
-  font-size: 19px;
-  margin-bottom: 8px;
+  font-size: 23px;
 }
 
-.cap p {
+.cap-line {
+  color: var(--ink-soft);
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+
+/* A fixed height, so a longer example never makes the grid jump. */
+.exchange {
+  margin-top: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 104px;
+}
+
+.ex-say {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  transition: opacity 0.3s var(--ease);
+}
+
+.ex-say.out {
+  opacity: 0;
+}
+
+.ex-bars {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+
+.ex-bars i {
+  width: 3px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--ink-faint);
+  transition: background 0.2s;
+}
+
+.ex-say.speaking .ex-bars i {
+  background: var(--coral);
+  animation: talk 0.9s ease-in-out infinite;
+}
+.ex-say.speaking .ex-bars i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.ex-say.speaking .ex-bars i:nth-child(3) {
+  animation-delay: -0.6s;
+}
+.ex-say.speaking .ex-bars i:nth-child(4) {
+  animation-delay: -0.15s;
+}
+
+@keyframes talk {
+  0%,
+  100% {
+    height: 5px;
+  }
+  50% {
+    height: 18px;
+  }
+}
+
+.ex-did {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px 6px 8px;
+  border: 1px solid rgba(204, 120, 92, 0.3);
+  border-radius: 999px;
+  background: var(--coral-dim);
+  color: var(--ink);
+  font-size: 12.5px;
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transition:
+    opacity 0.3s var(--ease),
+    transform 0.4s var(--ease);
+}
+
+.ex-did.show {
+  opacity: 1;
+  transform: none;
+}
+
+.ex-did-ico {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+
+.ex-did-ico svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: #1a1917;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.traits {
+  margin-top: 28px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+}
+
+.traits h3 {
+  font-size: 21px;
+  margin-bottom: 16px;
+}
+
+.traits ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px 28px;
+}
+
+.traits li {
   color: var(--ink-soft);
   font-size: 14.5px;
+  line-height: 1.5;
 }
 
-.cap .say {
+.traits strong {
   display: block;
-  margin-top: 12px;
-  color: var(--coral);
-  font-size: 14px;
-  font-style: italic;
+  margin-bottom: 3px;
+  color: var(--ink);
+  font-weight: 500;
 }
 
 /* --- install -------------------------------------------------------------- */
@@ -1028,17 +1162,9 @@ footer {
   .steps {
     grid-template-columns: repeat(2, 1fr);
   }
-  .caps {
+  .caps,
+  .traits ul {
     grid-template-columns: repeat(2, 1fr);
-  }
-  .cap,
-  .cap.wide {
-    grid-column: span 1;
-  }
-  /* Seven into two leaves one on its own at the bottom. Letting the last card
-     take the whole row turns the orphan into a closing statement. */
-  .cap:last-child {
-    grid-column: span 2;
   }
 }
 
@@ -1058,11 +1184,13 @@ footer {
 }
 
 @media (max-width: 620px) {
-  .caps {
+  .caps,
+  .traits ul {
     grid-template-columns: 1fr;
   }
-  .cap:last-child {
-    grid-column: span 1;
+  /* Full width, the commands fit on one line: less room to hold for them. */
+  .exchange {
+    min-height: 84px;
   }
   .steps {
     grid-template-columns: 1fr;
