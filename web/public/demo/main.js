@@ -15,20 +15,6 @@ import { resetGuard, runTool } from "./tool-executor.js";
 const micBtn = document.getElementById("mic");
 const micLabel = document.getElementById("micLabel");
 const statusEl = document.getElementById("status");
-const chipsEl = document.getElementById("chips");
-
-/**
- * Nobody knows what to say to a microphone, and a first turn that lands on
- * silence loses the demo in ten seconds. Sequenced to end on the part worth
- * remembering: beat three asks it to submit and it refuses, reading the form
- * back instead. Beat four is the confirmation it was holding out for.
- */
-const SUGGESTIONS = [
-  "Where does this page mention a penalty?",
-  "Go to the form. My name is Dana Whitfield, I'm in retail trade, sole trader.",
-  "Submit it.",
-  "Fine - read it back first, then submit.",
-];
 
 /** Survives a reload, so a tab can hand back the lease it left behind. */
 const LEASE_KEY = "aalto.lease";
@@ -41,7 +27,6 @@ let startedAt = 0;
 let countdown = null;
 
 sandbox.renderTabs();
-renderChips();
 refreshBudget();
 
 // --- budget -----------------------------------------------------------------
@@ -240,31 +225,3 @@ window.addEventListener("pagehide", () => {
   session?.end().catch(() => {});
   releaseLease();
 });
-
-// --- suggestions ------------------------------------------------------------
-
-function renderChips() {
-  for (const text of SUGGESTIONS) {
-    const item = document.createElement("li");
-
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "chip";
-    chip.append(document.createTextNode(text));
-
-    const flash = document.createElement("span");
-    flash.className = "copied";
-    chip.append(flash);
-
-    // Copies rather than sends: this is a voice demo, so a button that typed it
-    // for you would be demonstrating the wrong thing.
-    chip.addEventListener("click", async () => {
-      await navigator.clipboard?.writeText(text).catch(() => {});
-      flash.textContent = "copied";
-      setTimeout(() => (flash.textContent = ""), 1400);
-    });
-
-    item.append(chip);
-    chipsEl.append(item);
-  }
-}

@@ -213,14 +213,6 @@
             </button>
             <div class="status" id="status"></div>
 
-            <div class="tour">
-              <p class="tour-head">
-                Press the button, then <strong>say these out loud, in order</strong>. It is a
-                one-minute tour, and the last two are the interesting part - it will read the form
-                back before it will submit it.
-              </p>
-              <ol class="chips" id="chips"></ol>
-            </div>
 
           </div>
         </div>
@@ -235,55 +227,51 @@
             <p>All by voice, on any site. Say several at once, or cut in whenever you like.</p>
           </div>
 
-          <div class="caps">
-            <article class="cap" data-cap="ask">
-              <header><span class="cap-n">01</span><h3>Ask anything</h3></header>
-              <p class="cap-line">About the page you are on, or anything happening right now.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"What's the weather like right now?"</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Searched · 17°, light rain in London</span></p>
+          <div class="showcase">
+            <ol class="sc-list" id="scList">
+              <li><button type="button" class="sc-item is-on" data-i="0">
+                <span class="sc-n">01</span>
+                <span class="sc-copy"><span class="sc-title">Ask anything</span><span class="sc-line">About the page you are on, or anything happening right now.</span></span>
+              </button></li>
+              <li><button type="button" class="sc-item" data-i="1">
+                <span class="sc-n">02</span>
+                <span class="sc-copy"><span class="sc-title">Get around a page</span><span class="sc-line">Scroll, jump to a section, or find the exact words.</span></span>
+              </button></li>
+              <li><button type="button" class="sc-item" data-i="2">
+                <span class="sc-n">03</span>
+                <span class="sc-copy"><span class="sc-title">Write for you</span><span class="sc-line">Dictate into any box, or rework what is already there.</span></span>
+              </button></li>
+              <li><button type="button" class="sc-item" data-i="3">
+                <span class="sc-n">04</span>
+                <span class="sc-copy"><span class="sc-title">Fill forms safely</span><span class="sc-line">Several fields at once, read back before anything is sent.</span></span>
+              </button></li>
+              <li><button type="button" class="sc-item" data-i="4">
+                <span class="sc-n">05</span>
+                <span class="sc-copy"><span class="sc-title">Run your tabs</span><span class="sc-line">Open, switch and close them by saying what they are.</span></span>
+              </button></li>
+              <li><button type="button" class="sc-item" data-i="5">
+                <span class="sc-n">06</span>
+                <span class="sc-copy"><span class="sc-title">Teach it routines</span><span class="sc-line">Name a sequence once, replay it whenever you like.</span></span>
+              </button></li>
+            </ol>
+
+            <!-- A working replica of the side panel. Each capability plays as a
+                 real exchange: you speak, a tool runs, Aalto replies. -->
+            <div class="sc-panel" role="img" aria-label="The Aalto side panel, showing a conversation">
+              <div class="sc-bar">
+                <span class="sc-brand"><img src="assets/icons/mark.svg" alt="" /> Aalto</span>
+                <span class="sc-spacer"></span>
+                <span class="sc-status" id="scStatus" data-tone="live"><i></i><span id="scStatusText">Listening</span></span>
+                <span class="sc-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg></span>
+                <span class="sc-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" /></svg></span>
               </div>
-            </article>
-            <article class="cap" data-cap="move">
-              <header><span class="cap-n">02</span><h3>Get around a page</h3></header>
-              <p class="cap-line">Scroll, jump to a section, or find the exact words.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"Where does it mention refunds?"</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Found 3 matches · highlighted</span></p>
+              <div class="sc-feed" id="scFeed"></div>
+              <div class="sc-dock">
+                <div class="sc-wave" id="scWave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                <span class="sc-mic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg> Stop</span>
+                <span class="sc-hint"><kbd>Alt+A</kbd> from any page</span>
               </div>
-            </article>
-            <article class="cap" data-cap="write">
-              <header><span class="cap-n">03</span><h3>Write for you</h3></header>
-              <p class="cap-line">Dictate into any box, or rework what is already there.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"Summarize this."</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Rewrote the box · half the length</span></p>
-              </div>
-            </article>
-            <article class="cap" data-cap="forms">
-              <header><span class="cap-n">04</span><h3>Fill forms safely</h3></header>
-              <p class="cap-line">Several fields at once, read back before anything is sent.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"Just submit it."</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Held back · reading it to you first</span></p>
-              </div>
-            </article>
-            <article class="cap" data-cap="tabs">
-              <header><span class="cap-n">05</span><h3>Run your tabs</h3></header>
-              <p class="cap-line">Open, switch and close them by saying what they are.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"Switch to the tab you just opened."</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Switched · YouTube</span></p>
-              </div>
-            </article>
-            <article class="cap" data-cap="routines">
-              <header><span class="cap-n">06</span><h3>Teach it routines</h3></header>
-              <p class="cap-line">Name a sequence once, replay it whenever you like.</p>
-              <div class="exchange">
-                <p class="ex-say"><span class="ex-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="ex-say-text">"Remember that as my morning setup."</span></p>
-                <p class="ex-did show"><span class="ex-did-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span><span class="ex-did-text">Saved · 4 steps</span></p>
-              </div>
-            </article>
+            </div>
           </div>
 
           <div class="traits">
@@ -375,7 +363,7 @@
       </div>
     </footer>
 
-    <script type="module" src="assets/caps.js"></script>
+    <script type="module" src="assets/showcase.js"></script>
     <script type="module" src="demo/main.js"></script>
   </body>
 </html>
